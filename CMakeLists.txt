@@ -10,6 +10,11 @@ find_package(unofficial-sqlite3 CONFIG REQUIRED)
 
 add_executable(fitness_tracker
     src/main.cpp
+    src/database.cpp
+)
+
+target_include_directories(fitness_tracker PRIVATE
+    include
 )
 
 target_link_libraries(fitness_tracker PRIVATE
