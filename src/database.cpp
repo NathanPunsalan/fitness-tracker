@@ -15,6 +15,23 @@ Database::~Database() {
     disconnect();
 }
 
+// Initializes the database connection and required schema
+bool Database::initialize() {
+
+    // Open the SQLite database and enable foreign key enforcement
+    if (!connect()) {
+        return false;
+    }
+
+    // Create any required database tables that do not already exist
+    if (!initializeSchema()) {
+        disconnect();
+        return false;
+    }
+
+    return true;
+}
+
 // Opens the SQLite database
 bool Database::connect() {
 

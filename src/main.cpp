@@ -10,15 +10,9 @@ int main()
     // Create the database object using the application's database file
     Database database("data/fitness_tracker.db");
 
-    // Attempt to connect to the SQLite database before starting the server
-    if (!database.connect()) {
-        cerr << "Unable to start the Fitness Tracker app." << endl;
-        return 1;
-    }
-
-    // Create the initial database schema
-    if (!database.initializeSchema()) {
-        cerr << "Unable to initialize the database schema." << endl;
+    // Initialize the database before starting the server
+    if (!database.initialize()) {
+        cerr << "Unable to initialize the database." << endl;
         return 1;
     }
 
@@ -27,7 +21,7 @@ int main()
 
     // Basic route used to verify that the app is running
     CROW_ROUTE(app, "/")([]() {
-        return "Fitness Tracker is running.";
+        return "Fitness Tracker is running. Issue 4";
     });
 
     // Start the web server

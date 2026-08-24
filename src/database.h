@@ -20,6 +20,9 @@ public:
     // Ensures the database connection is closed when the object is destroyed
     ~Database();
 
+    // Initializes the database connection and required schema
+    bool initialize();
+
     // Opens the SQLite database connection
     bool connect();
 
