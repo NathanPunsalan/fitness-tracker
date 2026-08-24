@@ -16,6 +16,12 @@ int main()
         return 1;
     }
 
+    // Create the initial database schema
+    if (!database.initializeSchema()) {
+        cerr << "Unable to initialize the database schema." << endl;
+        return 1;
+    }
+
     // Create the Crow web application
     crow::SimpleApp app;
 

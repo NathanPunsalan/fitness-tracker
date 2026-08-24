@@ -33,7 +33,63 @@ bool Database::connect() {
         return false;
     }
 
-    std::cout << "Database connected successfully." << endl;
+    // Enable foreign key enforcement for database connection
+    int foreignKeyResult = sqlite3_exec(
+        db,
+        "PRAGMA foreign_keys = ON;",
+        nullptr,
+        nullptr,
+        nullptr
+    );
+
+    // Check whether foreign key enforcement was enabled successfully
+    if (foreignKeyResult != SQLITE_OK)  {
+        cerr << "Failed to enable foreign key enforcement: "
+             << sqlite3_errmsg(db)
+             << endl;
+
+        disconnect();
+
+        return false;
+    }
+
+    cout << "Database connected successfully." << endl;
+
+    return true;
+}
+
+// Creates the initial database tables if they do not already exist
+bool Database::initializeSchema() {
+
+    // SQL statement used to create tables
+    const char* sql =
+        "CREATE TABLE IF NOT EXISTS users ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "username TEXT NOT NULL UNIQUE,"
+        "email TEXT NOT NULL UNIQUE,"
+        "password_hash TEXT NOT NULL,"
+        "created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"
+        ");";
+
+    // SQLite stores any error message from sqlite3_exec here
+    char* errorMessage = nullptr;
+
+    // Execute the SQL statement
+    int result = sqlite3_exec(db, sql, nullptr, nullptr, &errorMessage);
+
+    // Check whether the schema was created successfully
+    if (result != SQLITE_OK) {
+        cerr << "Database schema error: "
+             << errorMessage
+             << endl;
+
+        sqlite3_free(errorMessage);
+
+        return false;
+    }
+
+    cout << "Database schema initialized successfully." << endl;
 
     return true;
 }

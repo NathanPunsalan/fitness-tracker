@@ -23,6 +23,9 @@ public:
     // Opens the SQLite database connection
     bool connect();
 
+    // Creates the initial database tables if they do not already exist
+    bool initializeSchema();
+
     // Closes the SQLite database connection
     void disconnect();
 };
