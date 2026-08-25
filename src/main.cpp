@@ -2,6 +2,7 @@
 #include <iostream>
 
 #include "database.h"
+#include "routes.h"
 
 using namespace std;
 
@@ -19,10 +20,11 @@ int main()
     // Create the Crow web application
     crow::SimpleApp app;
 
-    // Basic route used to verify that the app is running
-    CROW_ROUTE(app, "/")([]() {
-        return "Fitness Tracker is running. Issue 4";
-    });
+    // Register that application's routes with the Crow server
+    registerRoutes(app);
+
+    cout << "Starting Fitness Tracker server..." << endl;
+    cout << "Open http://localhost:18080 in your browser." << endl;
 
     // Start the web server
     app.port(18080).multithreaded().run();
