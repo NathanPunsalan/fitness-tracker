@@ -7,11 +7,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Crow CONFIG REQUIRED)
 find_package(unofficial-sqlite3 CONFIG REQUIRED)
+find_package(unofficial-sodium CONFIG REQUIRED)
 
 add_executable(fitness_tracker
     src/main.cpp
     src/database.cpp
     src/routes.cpp
+    src/auth.cpp
 )
 
 target_include_directories(fitness_tracker PRIVATE
@@ -21,4 +23,5 @@ target_include_directories(fitness_tracker PRIVATE
 target_link_libraries(fitness_tracker PRIVATE
     Crow::Crow
     unofficial::sqlite3::sqlite3
+    unofficial-sodium::sodium
 )
