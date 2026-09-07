@@ -21,7 +21,7 @@ int main()
     crow::SimpleApp app;
 
     // Register that application's routes with the Crow server
-    registerRoutes(app);
+    registerRoutes(app, database);
 
     cout << "Starting Fitness Tracker server..." << endl;
     cout << "Open http://localhost:18080 in your browser." << endl;

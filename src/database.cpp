@@ -121,3 +121,74 @@ void Database::disconnect() {
         cout << "Database connection closed." << endl;
     }
 }
+
+// Creates new user and stores their username, email, and hashed password
+bool Database::createUser(
+    const string& username,
+    const string& email,
+    const string& passwordHash
+) {
+    const char* sql =
+        "INSERT INTO users (username, email, password_hash) "
+        "VALUES (?, ?, ?);";
+
+    sqlite3_stmt* statement = nullptr;
+
+    int result = sqlite3_prepare_v2(
+        db,
+        sql,
+        -1,
+        &statement,
+        nullptr
+    );
+
+    // Stop if SQLite could not prepare the statement
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare user insert statement: "
+             << sqlite3_errmsg(db) << endl;
+
+        return false;
+    }
+
+    // Bind the username to the first ? placeholder
+    sqlite3_bind_text(
+        statement,
+        1,
+        username.c_str(),
+        -1,
+        SQLITE_TRANSIENT
+    );
+
+    // Bind email to the second ? placeholder
+    sqlite3_bind_text(
+        statement,
+        2,
+        username.c_str(),
+        -1,
+        SQLITE_TRANSIENT
+    );
+
+    // Bind hashed password to the third ? placeholder
+    sqlite3_bind_text(
+        statement,
+        3,
+        passwordHash.c_str(),
+        -1,
+        SQLITE_TRANSIENT
+    );
+
+    // Execute the prepared INSERT statement
+    result = sqlite3_step(statement);
+
+    sqlite3_finalize(statement);
+
+    // SQLITE_DONE means the INSERT completed successfully
+    if (result != SQLITE_DONE) {
+        cerr << "Failed to create user: "
+             << sqlite3_errmsg(db) << endl;
+
+        return false;
+    }
+
+    return true;
+}

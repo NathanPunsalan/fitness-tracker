@@ -1,4 +1,5 @@
 #include "routes.h"
+#include "auth.h"
 
 #include <string>
 
@@ -40,7 +41,7 @@ string createPage(const string& title, const string& message)
 }
 
 // Registers the application's basic routes
-void registerRoutes(crow::SimpleApp& app)
+void registerRoutes(crow::SimpleApp& app, Database& database)
 {
     // Home route used to confirm Fitness Tracker app is running
     CROW_ROUTE(app, "/")([]() {
@@ -48,7 +49,7 @@ void registerRoutes(crow::SimpleApp& app)
             200,
             createPage(
                 "Fitness Tracker",
-                "Fitness Tracker is running. Issue 7"
+                "Fitness Tracker is running. Issue 8.2"
             )
         );
     });
@@ -94,6 +95,62 @@ void registerRoutes(crow::SimpleApp& app)
                 "Account",
                 "Account features will be added in a future update."
             )
+        );
+    });
+
+    // Creates a new user account
+    CROW_ROUTE(app, "/api/register").methods(crow::HTTPMethod::POST)
+    ([&database](const crow::request& request) {
+
+        // Parse JSON body sent with registration request
+        auto body = crow::json::load(request.body);
+
+        // Make sure request contains valid JSON
+        if (!body) {
+            return crow::response(
+                400,
+                "Invalid registration data."
+            );
+        }
+
+        // Make sure all required fields are present
+        if (!body.has("username") ||
+            !body.has("email") ||
+            !body.has("password")) {
+                
+                return crow::response(
+                    400,
+                    "Username, email, and password are required."
+                );
+        }
+        
+        // Read registration fields from the request
+        string username = body["username"].s();
+        string email = body["email"].s();
+        string password = body["password"].s();
+
+        // Reject empty registration fields
+        if (username.empty() || email.empty() || password.empty() ) {
+            return crow::response(
+                400,
+                "Username, email, and password cannot be empty."
+            );
+        }
+
+        // Hash the password before storing it in the database
+        string passwordHash = hashPassword(password);
+
+        // Attempt to create user account
+        if (!database.createUser(username, email, passwordHash)) {
+            return crow::response(
+                400,
+                "Unable to create user account."
+            );
+        }
+
+        return crow::response(
+            201,
+            "User account created successfully."
         );
     });
 
