@@ -13,6 +13,13 @@ private:
     // Location of the SQLite database file
     std::string databasePath;
 
+    // Safely binds a string value to a placeholder in a prepared SQL statement
+    bool bindText(
+        sqlite3_stmt* statement,
+        int index,
+        const std:: string& value
+    );
+
 public:
     // Creates a database object using the provided database file path
     Database(const std::string& path);
@@ -38,6 +45,13 @@ public:
         const std::string& username,
         const std::string& email,
         const std::string& passwordHash
+    );
+
+    // Retrieves a user's password hash using their username or email
+    // Returns true if the user was found sucessfully
+    bool getUserPasswordHash(
+        const std::string& login,
+        std::string& passwordHash
     );
 };
 

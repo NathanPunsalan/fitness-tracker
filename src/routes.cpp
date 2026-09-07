@@ -49,7 +49,7 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
             200,
             createPage(
                 "Fitness Tracker",
-                "Fitness Tracker is running. Issue 8.2"
+                "Fitness Tracker is running. Issue 8.3"
             )
         );
     });
@@ -152,6 +152,67 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
             201,
             "User account created successfully."
         );
+    });
+
+    CROW_ROUTE(app, "/api/login").methods(crow::HTTPMethod::POST)
+    ([&database](const crow::request& request) {
+
+        // Parse JSON body sent with the login request
+        auto body = crow::json::load(request.body);
+
+        // Ensures the request contains valid JSON
+        if (!body) {
+            return crow::response(
+                400,
+                "Invalid login data."
+            );
+        }
+
+        // Ensures both required fields are present
+        if (!body.has("login") ||
+            !body.has("password")) {
+
+            return crow::response(
+                400,
+                "Login and password are required."
+            );
+        }
+        
+        // Read the submitted login value and password
+        string login = body["login"].s();
+        string password = body["password"].s();
+        
+        // Reject empty login fields
+        if (login.empty() || password.empty()) {
+            return crow::response(
+                400,
+                "Login and password cannot be empty."
+            );
+        }
+
+        // Retrieve the stored password hash for the username or email
+        string passwordHash;
+
+        if (!database.getUserPasswordHash(login, passwordHash)) {
+            return crow::response(
+                401,
+                "Invalid login credentials."
+            );
+        }
+
+        // Verify the submitted password against the stored password hash
+        if (!verifyPassword(password, passwordHash)) {
+            return crow::response(
+                401,
+                "Invalid login credentials."
+            );
+        }
+
+        return crow::response(
+            200,
+            "Login successful."
+        );
+    
     });
 
     // Health route used to verify that the web server is responding correctly

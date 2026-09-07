@@ -15,6 +15,31 @@ Database::~Database() {
     disconnect();
 }
 
+// Function to bind a string value to a placeholder in a prepared SQL statement
+bool Database::bindText(
+    sqlite3_stmt* statement,
+    int index,
+    const string& value
+) {
+    int result = sqlite3_bind_text(
+        statement,
+        index,
+        value.c_str(),
+        -1,
+        SQLITE_TRANSIENT
+    );
+
+    // SQLITE_OK means the value was bound successfully
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind SQL text value: "
+             << sqlite3_errmsg(db) << endl;
+
+        return false;
+    }
+
+    return true;
+}
+
 // Initializes the database connection and required schema
 bool Database::initialize() {
 
@@ -150,32 +175,14 @@ bool Database::createUser(
         return false;
     }
 
-    // Bind the username to the first ? placeholder
-    sqlite3_bind_text(
-        statement,
-        1,
-        username.c_str(),
-        -1,
-        SQLITE_TRANSIENT
-    );
+    // Bind the user account values to the SQL placeholders
+    if (!bindText(statement, 1, username) ||
+        !bindText(statement, 2, email) ||
+        !bindText(statement, 3, passwordHash)) {
 
-    // Bind email to the second ? placeholder
-    sqlite3_bind_text(
-        statement,
-        2,
-        username.c_str(),
-        -1,
-        SQLITE_TRANSIENT
-    );
-
-    // Bind hashed password to the third ? placeholder
-    sqlite3_bind_text(
-        statement,
-        3,
-        passwordHash.c_str(),
-        -1,
-        SQLITE_TRANSIENT
-    );
+            sqlite3_finalize(statement);
+            return false;
+        }
 
     // Execute the prepared INSERT statement
     result = sqlite3_step(statement);
@@ -191,4 +198,67 @@ bool Database::createUser(
     }
 
     return true;
+}
+
+// Retrieves a user's password hash using username or email
+bool Database::getUserPasswordHash(
+    const string& login,
+    string& passwordHash
+) {
+    // Search for a user whose username or email matches the submitted login value
+    const char* sql =
+        "SELECT password_hash "
+        "FROM users "
+        "WHERE username = ? OR email = ?;";
+
+    sqlite3_stmt* statement = nullptr;
+
+    int result = sqlite3_prepare_v2(
+        db,
+        sql,
+        -1,
+        &statement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare user lookup statement: "
+             << sqlite3_errmsg(db) << endl;
+
+        return false;
+    }
+
+    // Bind the login value to both the username and email placeholders
+    if (!bindText(statement, 1, login) ||
+        !bindText(statement, 2, login)) {
+            sqlite3_finalize(statement);
+
+            return false;
+        }
+
+    // Execute query
+    result = sqlite3_step(statement);
+
+    // SQLITE_ROW means that a matching user was found
+    if (result == SQLITE_ROW) {
+
+        // Retrieve the password hash from the first selected column
+        const unsigned char* storedHash =
+            sqlite3_column_text(statement, 0);
+
+        // Ensures SQLite returned a valid value
+        if (storedHash != nullptr) {
+            passwordHash = 
+                reinterpret_cast<const char*>(storedHash);
+        }
+
+        sqlite3_finalize(statement);
+
+        return true;
+    }
+
+    // No matching user was found
+    sqlite3_finalize(statement);
+
+    return false;
 }
