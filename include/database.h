@@ -17,7 +17,7 @@ private:
     bool bindText(
         sqlite3_stmt* statement,
         int index,
-        const std:: string& value
+        const std::string& value
     );
 
 public:
@@ -48,10 +48,17 @@ public:
     );
 
     // Retrieves a user's password hash using their username or email
-    // Returns true if the user was found sucessfully
-    bool getUserPasswordHash(
+    bool getUserLoginData(
         const std::string& login,
+        int& userId,
         std::string& passwordHash
+    );
+
+    // Creates new authenticated session for user
+    bool createSession(
+        int userId,
+        const std::string& sessionToken,
+        const std::string& expiresAt
     );
 };
 

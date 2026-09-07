@@ -12,4 +12,10 @@ bool verifyPassword(
     const std::string& passwordHash
 );
 
+// Generates a cryptographically secure random token for user sessions
+std::string generateSessionToken();
+
+// Creates an expiration timestamp for a new session
+std::string createSessionExpiration();
+
 #endif

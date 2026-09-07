@@ -49,7 +49,7 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
             200,
             createPage(
                 "Fitness Tracker",
-                "Fitness Tracker is running. Issue 8.3"
+                "Fitness Tracker is running. Issue 8.4"
             )
         );
     });
@@ -191,9 +191,10 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
         }
 
         // Retrieve the stored password hash for the username or email
+        int userId;
         string passwordHash;
 
-        if (!database.getUserPasswordHash(login, passwordHash)) {
+        if (!database.getUserLoginData(login, userId, passwordHash)) {
             return crow::response(
                 401,
                 "Invalid login credentials."
@@ -208,18 +209,39 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
             );
         }
 
-        return crow::response(
-            200,
-            "Login successful."
+        // Generate a secure session token and expiration timestamp
+        string sessionToken = generateSessionToken();
+        string expiresAt = createSessionExpiration();
+
+        // Store the new session in the database
+        if (!database.createSession(userId, sessionToken, expiresAt)) {
+            return crow::response(
+                500,
+                "Unable to create session."
+            );
+        }
+
+        // Create the successful login response
+        crow::response response(
+                200,
+                "Login successful."
+            );
+
+        // Store the session token in an HTTP-only cookie
+        response.add_header(
+            "Set-Cookie",
+            "session_token=" + sessionToken +
+            "; HttpOnly; SameSite=Strict; Path=/"
         );
+
+        return response;
     
     });
-
+    
     // Health route used to verify that the web server is responding correctly
     CROW_ROUTE(app, "/api/health")([]() {
         return crow::response(
             200,
-
             "Fitness Tracker API is healthy."
         );
     });

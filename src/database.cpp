@@ -112,8 +112,17 @@ bool Database::initializeSchema() {
         "password_hash TEXT NOT NULL,"
         "created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
         "updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"
-        ");";
+        ");"
 
+        "CREATE TABLE IF NOT EXISTS sessions ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "user_id INTEGER NOT NULL,"
+        "session_token TEXT NOT NULL UNIQUE,"
+        "created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "expires_at TEXT NOT NULL,"
+        "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"
+        ");";
+        
     // SQLite stores any error message from sqlite3_exec here
     char* errorMessage = nullptr;
 
@@ -201,13 +210,14 @@ bool Database::createUser(
 }
 
 // Retrieves a user's password hash using username or email
-bool Database::getUserPasswordHash(
+bool Database::getUserLoginData(
     const string& login,
+    int& userId,
     string& passwordHash
 ) {
     // Search for a user whose username or email matches the submitted login value
     const char* sql =
-        "SELECT password_hash "
+        "SELECT id, password_hash "
         "FROM users "
         "WHERE username = ? OR email = ?;";
 
@@ -231,8 +241,8 @@ bool Database::getUserPasswordHash(
     // Bind the login value to both the username and email placeholders
     if (!bindText(statement, 1, login) ||
         !bindText(statement, 2, login)) {
+           
             sqlite3_finalize(statement);
-
             return false;
         }
 
@@ -242,9 +252,12 @@ bool Database::getUserPasswordHash(
     // SQLITE_ROW means that a matching user was found
     if (result == SQLITE_ROW) {
 
-        // Retrieve the password hash from the first selected column
+        // Retrieve user ID from the first selected column
+        userId = sqlite3_column_int(statement, 0);
+
+        // Retrieve the password hash from the second selected column
         const unsigned char* storedHash =
-            sqlite3_column_text(statement, 0);
+            sqlite3_column_text(statement, 1);
 
         // Ensures SQLite returned a valid value
         if (storedHash != nullptr) {
@@ -261,4 +274,69 @@ bool Database::getUserPasswordHash(
     sqlite3_finalize(statement);
 
     return false;
+}
+
+// Creates a new authenticated session for a user
+bool Database::createSession(
+    int userId,
+    const string& sessionToken,
+    const string& expiresAt
+) {
+    const char* sql =
+        "INSERT INTO sessions (user_id, session_token, expires_at) "
+        "VALUES (?, ?, ?);";
+    
+    sqlite3_stmt* statement = nullptr;
+
+    int result = sqlite3_prepare_v2(
+        db,
+        sql,
+        -1,
+        &statement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare session insert statement: "
+             << sqlite3_errmsg(db) << endl;
+
+        return false;
+    }
+
+    // Bind the user ID to the first placeholder
+    result = sqlite3_bind_int(
+        statement,
+        1,
+        userId
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind session user ID: "
+             << sqlite3_errmsg(db) << endl;
+            
+        sqlite3_finalize(statement);
+        return false;
+    }
+
+    // Bind the session token and expiration time
+    if (!bindText(statement, 2, sessionToken) ||
+        !bindText(statement, 3, expiresAt)) {
+
+            sqlite3_finalize(statement);
+            return false;
+        }
+
+    // Execute the INSERT statement
+    result = sqlite3_step(statement);
+
+    sqlite3_finalize(statement);
+
+    if (result != SQLITE_DONE) {
+        cerr << "Failed to create session: "
+             << sqlite3_errmsg(db) << endl;
+
+        return false;
+    }
+
+    return true;
 }
