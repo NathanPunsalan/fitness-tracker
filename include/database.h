@@ -60,6 +60,11 @@ public:
         const std::string& sessionToken,
         const std::string& expiresAt
     );
+
+    // Deletes an authenticated session using its session token
+    bool deleteSession(
+        const std::string& sessionToken
+    );
 };
 
 #endif

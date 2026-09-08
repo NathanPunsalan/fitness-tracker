@@ -49,7 +49,7 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
             200,
             createPage(
                 "Fitness Tracker",
-                "Fitness Tracker is running. Issue 8.4"
+                "Fitness Tracker is running. Issue 8.5"
             )
         );
     });
@@ -236,6 +236,70 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
 
         return response;
     
+    });
+
+    // Logs out the current user by deleting their session
+    CROW_ROUTE(app, "/api/logout").methods(crow::HTTPMethod::POST)
+    ([&database](const crow::request& request) {
+
+        // Read the session token stored in the request cookie
+        string sessionToken = request.get_header_value("Cookie");
+
+        // Ensures the request contains a session cookie
+        if (sessionToken.empty()) {
+            return crow::response(
+                401,
+                "No active session found."
+            );
+        }
+
+        // Locate the session_token value inside the Cookie header
+        const string cookieName = "session_token=";
+        size_t tokenStart = sessionToken.find(cookieName);
+
+        if (tokenStart == string::npos) {
+            return crow::response(
+                401,
+                "No active session found."
+            );
+        }
+
+        tokenStart += cookieName.length();
+
+        // Find the end of the session token if multiple cookies are present
+        size_t tokenEnd = sessionToken.find(';', tokenStart);
+
+        string token = sessionToken.substr(
+            tokenStart,
+            tokenEnd - tokenStart
+        );
+
+        // Delete the matching session from the database
+        if (!database.deleteSession(token)) {
+            return crow::response(
+                500,
+                "Unable to log out."
+            );
+        }
+
+        // Create the successful logout response
+        crow::response response(
+            200,
+            "Logout successful."
+        );
+
+        // Expire the brower's session cookie immediately
+        response.add_header(
+            "Set-Cookie",
+            "session_token=; "
+            "HttpOnly; "
+            "SameSite=Strict; "
+            "Path=/; "
+            "Max-Age=0"
+        );
+
+        return response;
+
     });
     
     // Health route used to verify that the web server is responding correctly

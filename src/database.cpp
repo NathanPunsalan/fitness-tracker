@@ -340,3 +340,50 @@ bool Database::createSession(
 
     return true;
 }
+
+// Deletes an authenticated session using its session token
+bool Database::deleteSession(const string& sessionToken) {
+    const char* sql =
+        "DELETE FROM sessions "
+        "WHERE session_token = ?;";
+
+    sqlite3_stmt* statement = nullptr;
+
+    // Prepare the DELETE statement
+    int result = sqlite3_prepare_v2(
+        db,
+        sql,
+        -1,
+        &statement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare session delete statement: "
+             << sqlite3_errmsg(db) << endl;
+        
+        return false;
+    }
+
+    // Bind the session token to the SQL placeholder
+    if (!bindText(statement, 1, sessionToken)) {
+        sqlite3_finalize(statement);
+        
+        return false;
+    }
+
+    // Execute the DELETE statement
+    result = sqlite3_step(statement);
+
+    sqlite3_finalize(statement);
+
+    // SQLITE_DONE means SQLite successfully executed the DELETE
+    if (result != SQLITE_DONE) {
+        cerr << "Failed to delete session: "
+             << sqlite3_errmsg(db) << endl;
+
+        return false;
+    }
+
+    return true;
+}
