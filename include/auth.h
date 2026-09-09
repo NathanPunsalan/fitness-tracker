@@ -18,4 +18,10 @@ std::string generateSessionToken();
 // Creates an expiration timestamp for a new session
 std::string createSessionExpiration();
 
+// Extracts the session token from the request Cookie header
+bool getSessionTokenFromCookie(
+    const std::string& cookieHeader,
+    std::string& sessionToken
+);
+
 #endif

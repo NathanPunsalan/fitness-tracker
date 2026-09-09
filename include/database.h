@@ -65,6 +65,12 @@ public:
     bool deleteSession(
         const std::string& sessionToken
     );
+
+    // Checks whether a session token belongs to valid, unexpired session
+    bool validateSession(
+        const std::string& sessionToken,
+        int& userId
+    );
 };
 
 #endif

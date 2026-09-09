@@ -55,7 +55,32 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
     });
 
     // Lifting placeholder route
-    CROW_ROUTE(app, "/lifting")([]() {
+    CROW_ROUTE(app, "/lifting")
+    ([&database](const crow::request& request) {
+        
+        // Read the Cookie header from the request
+        string cookieHeader = request.get_header_value("Cookie");
+
+        // Extract the session token from the Cookie header
+        string sessionToken;
+
+        if (!getSessionTokenFromCookie(cookieHeader, sessionToken)) {
+            return crow::response(
+                401,
+                "Authentication required."
+            );
+        }
+
+        // Validate the session and retrieve the authenticated user's ID
+        int userId;
+
+        if (!database.validateSession(sessionToken,userId)) {
+            return crow::response(
+                401,
+                "Invalid or expired session."
+            );
+        }
+
         return crow::response(
             200,
             createPage(
@@ -66,7 +91,28 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
     });
 
     // Running placeholder route
-    CROW_ROUTE(app, "/running")([]() {
+    CROW_ROUTE(app, "/running")
+    ([&database](const crow::request& request) {
+
+        string cookieHeader = request.get_header_value("Cookie");
+        string sessionToken;
+
+        if (!getSessionTokenFromCookie(cookieHeader, sessionToken)) {
+            return crow::response(
+                401,
+                "Authentication required."
+            );
+        }
+        
+        int userId;
+
+        if (!database.validateSession(sessionToken, userId)) {
+            return crow::response(
+                401,
+                "Invalid or expired session."
+            );
+        }
+
         return crow::response(
             200,
             createPage(
@@ -77,7 +123,28 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
     });
 
     // Nutrition placeholder route
-    CROW_ROUTE(app, "/nutrition")([]() {
+    CROW_ROUTE(app, "/nutrition")
+    ([&database](const crow::request& request) {
+
+        string cookieHeader = request.get_header_value("Cookie");
+        string sessionToken;
+
+        if (!getSessionTokenFromCookie(cookieHeader, sessionToken)) {
+            return crow::response(
+                401,
+                "Authentication required."
+            );
+        }
+
+        int userId;
+
+        if(!database.validateSession(sessionToken, userId)) {
+            return crow::response(
+                401,
+                "Invalid or expired session."
+            );
+        }
+
         return crow::response(
             200,
             createPage(
@@ -87,8 +154,34 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
         );
     });
 
-    // Account placeholder route
-    CROW_ROUTE(app, "/account")([]() {
+    // Account route protected by session authentication
+    CROW_ROUTE(app, "/account")
+    ([&database](const crow::request& request) {
+
+        // Read the Cookie header from the request
+        string cookieHeader = request.get_header_value("Cookie");
+
+        // Extract the session token from the Cookie header
+        string sessionToken;
+
+        if (!getSessionTokenFromCookie(cookieHeader, sessionToken)) {
+            return crow:: response(
+                401,
+                "Authentication required."
+            );
+        }
+
+        // Validate the session and retrieve the authenticated user's ID
+        int userId;
+
+        if (!database.validateSession(sessionToken, userId)) {
+            return crow::response(
+                401,
+                "Invalid or expired session."
+            );
+        }
+
+        // The request is authenticated, so the protected page can be displayed
         return crow::response(
             200,
             createPage(
@@ -242,40 +335,21 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
     CROW_ROUTE(app, "/api/logout").methods(crow::HTTPMethod::POST)
     ([&database](const crow::request& request) {
 
-        // Read the session token stored in the request cookie
-        string sessionToken = request.get_header_value("Cookie");
+        // Read the Cookie header from the request
+        string cookieHeader = request.get_header_value("Cookie");
 
-        // Ensures the request contains a session cookie
-        if (sessionToken.empty()) {
+        // Extract the session token from the Cookie header
+        string sessionToken;
+
+        if (!getSessionTokenFromCookie(cookieHeader, sessionToken)) {
             return crow::response(
                 401,
                 "No active session found."
             );
         }
-
-        // Locate the session_token value inside the Cookie header
-        const string cookieName = "session_token=";
-        size_t tokenStart = sessionToken.find(cookieName);
-
-        if (tokenStart == string::npos) {
-            return crow::response(
-                401,
-                "No active session found."
-            );
-        }
-
-        tokenStart += cookieName.length();
-
-        // Find the end of the session token if multiple cookies are present
-        size_t tokenEnd = sessionToken.find(';', tokenStart);
-
-        string token = sessionToken.substr(
-            tokenStart,
-            tokenEnd - tokenStart
-        );
 
         // Delete the matching session from the database
-        if (!database.deleteSession(token)) {
+        if (!database.deleteSession(sessionToken)) {
             return crow::response(
                 500,
                 "Unable to log out."

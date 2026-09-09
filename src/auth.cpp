@@ -95,3 +95,33 @@ string createSessionExpiration() {
 
     return output.str();
 }
+
+// Extract the session token from the request Cookie header
+bool getSessionTokenFromCookie(
+    const string& cookieHeader,
+    string& sessionToken
+) {
+    // Name used for the session cookie
+    const string cookieName = "session_token=";
+
+    // Find where the session token begins
+    size_t tokenStart = cookieHeader.find(cookieName);
+
+    if (tokenStart == string::npos) {
+        return false;
+    }
+
+    tokenStart += cookieName.length();
+
+    // Find the end of the token if multiple cookies are present
+    size_t tokenEnd = cookieHeader.find(';', tokenStart);
+
+    // Extract only the session token value
+    sessionToken = cookieHeader.substr(
+        tokenStart,
+        tokenEnd - tokenStart 
+    );
+
+    // Reject an empty session token
+    return !sessionToken.empty();
+}

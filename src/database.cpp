@@ -387,3 +387,58 @@ bool Database::deleteSession(const string& sessionToken) {
 
     return true;
 }
+
+// Check whether a session token belongs to a valid, unexpired session
+bool Database::validateSession(
+    const std::string& sessionToken,
+    int& userId
+) {
+    const char* sql =
+        "SELECT user_id "
+        "FROM sessions "
+        "WHERE session_token = ? "
+        "AND expires_at > CURRENT_TIMESTAMP;";
+    
+    sqlite3_stmt* statement = nullptr;
+
+    // Prepare the session lookup statement
+    int result = sqlite3_prepare_v2(
+        db,
+        sql,
+        -1,
+        &statement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare session validation statement: "
+             << sqlite3_errmsg(db) << endl;
+
+        return false;
+    }
+
+    // Bind the session token to the SQL placeholder
+    if (!bindText(statement, 1, sessionToken)) {
+        sqlite3_finalize(statement);
+
+        return false;
+    }
+
+    // Execute the query
+    result = sqlite3_step(statement);
+
+    // SQLITE_ROW means a valid, unexpired session was found
+    if (result == SQLITE_ROW) {
+        userId = sqlite3_column_int(statement, 0);
+
+        sqlite3_finalize(statement);
+
+        return true;
+    }
+
+    // No matching valid session was found
+    sqlite3_finalize(statement);
+
+    return false;
+}
+
