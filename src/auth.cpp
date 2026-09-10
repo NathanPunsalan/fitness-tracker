@@ -125,3 +125,33 @@ bool getSessionTokenFromCookie(
     // Reject an empty session token
     return !sessionToken.empty();
 }
+
+// Authenticate a request using the user's session cookie
+bool authenticateRequest(
+    const crow::request& request,
+    Database& database,
+    int& userId,
+    string& errorMessage
+) {
+    // Read the Cookie header from the request
+    string cookieHeader = request.get_header_value("Cookie");
+
+    // Extract the session token from the Cookie header
+    string sessionToken;
+
+    if (!getSessionTokenFromCookie (cookieHeader, sessionToken)) {
+        errorMessage = "Authentication required.";
+
+        return false;
+    }
+
+    // Validate the session and retrieve the authenticated user's ID
+    if (!database.validateSession(sessionToken, userId)) {
+        errorMessage = "Invalid or expired session.";
+
+        return false;
+    }
+
+    // Authentication succeeded
+    return true;
+}

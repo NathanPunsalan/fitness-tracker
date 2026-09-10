@@ -2,6 +2,8 @@
 #define AUTH_H
 
 #include <string>
+#include <crow.h>
+#include <database.h>
 
 // Hashes a plain-text password using libsodium
 std::string hashPassword(const std::string& password);
@@ -22,6 +24,14 @@ std::string createSessionExpiration();
 bool getSessionTokenFromCookie(
     const std::string& cookieHeader,
     std::string& sessionToken
+);
+
+// Authenticates a request using the user's session cookie
+bool authenticateRequest(
+    const crow::request& request,
+    Database& database,
+    int& userId,
+    std::string& errorMessage
 );
 
 #endif

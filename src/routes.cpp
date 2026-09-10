@@ -49,7 +49,7 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
             200,
             createPage(
                 "Fitness Tracker",
-                "Fitness Tracker is running. Issue 8.5"
+                "Fitness Tracker is running. Issue 8.7"
             )
         );
     });
@@ -58,26 +58,18 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
     CROW_ROUTE(app, "/lifting")
     ([&database](const crow::request& request) {
         
-        // Read the Cookie header from the request
-        string cookieHeader = request.get_header_value("Cookie");
-
-        // Extract the session token from the Cookie header
-        string sessionToken;
-
-        if (!getSessionTokenFromCookie(cookieHeader, sessionToken)) {
-            return crow::response(
-                401,
-                "Authentication required."
-            );
-        }
-
-        // Validate the session and retrieve the authenticated user's ID
         int userId;
+        string authenticationError;
 
-        if (!database.validateSession(sessionToken,userId)) {
+        if(!authenticateRequest(
+            request,
+            database,
+            userId,
+            authenticationError
+        )) {
             return crow::response(
                 401,
-                "Invalid or expired session."
+                authenticationError
             );
         }
 
@@ -94,22 +86,18 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
     CROW_ROUTE(app, "/running")
     ([&database](const crow::request& request) {
 
-        string cookieHeader = request.get_header_value("Cookie");
-        string sessionToken;
-
-        if (!getSessionTokenFromCookie(cookieHeader, sessionToken)) {
-            return crow::response(
-                401,
-                "Authentication required."
-            );
-        }
-        
         int userId;
+        string authenticationError;
 
-        if (!database.validateSession(sessionToken, userId)) {
+        if (!authenticateRequest(
+            request,
+            database,
+            userId,
+            authenticationError
+        )) {
             return crow::response(
-                401,
-                "Invalid or expired session."
+            401,
+            authenticationError
             );
         }
 
@@ -126,22 +114,18 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
     CROW_ROUTE(app, "/nutrition")
     ([&database](const crow::request& request) {
 
-        string cookieHeader = request.get_header_value("Cookie");
-        string sessionToken;
-
-        if (!getSessionTokenFromCookie(cookieHeader, sessionToken)) {
-            return crow::response(
-                401,
-                "Authentication required."
-            );
-        }
-
         int userId;
+        string authenticationError;
 
-        if(!database.validateSession(sessionToken, userId)) {
+        if (!authenticateRequest(
+            request,
+            database,
+            userId,
+            authenticationError
+        )) {
             return crow::response(
-                401,
-                "Invalid or expired session."
+            401,
+            authenticationError
             );
         }
 
@@ -158,26 +142,18 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
     CROW_ROUTE(app, "/account")
     ([&database](const crow::request& request) {
 
-        // Read the Cookie header from the request
-        string cookieHeader = request.get_header_value("Cookie");
-
-        // Extract the session token from the Cookie header
-        string sessionToken;
-
-        if (!getSessionTokenFromCookie(cookieHeader, sessionToken)) {
-            return crow:: response(
-                401,
-                "Authentication required."
-            );
-        }
-
-        // Validate the session and retrieve the authenticated user's ID
         int userId;
+        string authenticationError;
 
-        if (!database.validateSession(sessionToken, userId)) {
+        if (!authenticateRequest(
+            request,
+            database,
+            userId,
+            authenticationError
+        )) {
             return crow::response(
-                401,
-                "Invalid or expired session."
+            401,
+            authenticationError
             );
         }
 
