@@ -338,7 +338,7 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
             "Logout successful."
         );
 
-        // Expire the brower's session cookie immediately
+        // Expire the browser's session cookie immediately
         response.add_header(
             "Set-Cookie",
             "session_token=; "
@@ -350,6 +350,32 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
 
         return response;
 
+    });
+
+    // Checks whether the current request has a valid authenticated session
+    CROW_ROUTE(app, "/api/session").methods(crow::HTTPMethod::GET)
+    ([&database](const crow::request& request) {
+
+        int userId;
+        string authenticationError;
+
+        // Validate the session cookie using authentication function
+        if (!authenticateRequest(
+            request,
+            database,
+            userId,
+            authenticationError
+        )) {
+            return crow::response(
+                401,
+                authenticationError
+            );
+        }
+
+        return crow::response(
+            200,
+            "Authenticated."
+        );
     });
     
     // Health route used to verify that the web server is responding correctly
