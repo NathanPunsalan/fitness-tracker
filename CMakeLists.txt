@@ -14,6 +14,7 @@ add_executable(fitness_tracker
     src/database.cpp
     src/routes.cpp
     src/auth.cpp
+    src/validation.cpp
 )
 
 target_include_directories(fitness_tracker PRIVATE

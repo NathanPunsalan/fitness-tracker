@@ -1,12 +1,16 @@
 import { useState } from "react";
 
 import { registerUser } from "../services/authService";
+import { useNavigate } from "react-router-dom";
 
 function Register() {
     // Store the values entered into each registration field
     const [username, setUsername] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+
+    // Allows the application to redirect the user after registration
+    const navigate = useNavigate();
 
     // Store the message returned after registration
     const [message, setMessage] = useState("");
@@ -25,6 +29,11 @@ function Register() {
 
         // Display backend response to user
         setMessage(result.message);
+
+        // Redirect to the login page after successful registration
+        if (result.success) {
+            navigate("/login");
+        }
     }
 
     return (

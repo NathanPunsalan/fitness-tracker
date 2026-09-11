@@ -1,5 +1,6 @@
 #include "routes.h"
 #include "auth.h"
+#include "validation.h"
 
 #include <string>
 
@@ -193,16 +194,51 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
                 );
         }
         
+        // Make sure all registration fields contain string values
+        if (body["username"].t() != crow::json::type::String ||
+            body["email"].t() != crow::json::type::String ||
+            body["password"].t() != crow::json::type::String) {
+
+                return crow::response(
+                    400,
+                    "Username, email, and password must be text values."
+                );
+            }
+
         // Read registration fields from the request
         string username = body["username"].s();
         string email = body["email"].s();
         string password = body["password"].s();
 
         // Reject empty registration fields
-        if (username.empty() || email.empty() || password.empty() ) {
+        if (isBlank(username) || isBlank(email) || isBlank(password)) {
             return crow::response(
                 400,
                 "Username, email, and password cannot be empty."
+            );
+        }
+
+        // Validate username requirements
+        if (!isValidUsername(username)) {
+            return crow::response(
+                400,
+                "Username must be between 5 and 15 characters."
+            );
+        }
+
+        // Validate email format
+        if (!isValidEmail(email)) {
+            return crow::response(
+                400,
+                "Please enter a valid email address."
+            );
+        }
+
+        // Validate password security requirements
+        if (!isValidPassword(password)) {
+            return crow::response(
+                400,
+                "Password must be at least 8 characters and include an uppercase letter, lowercase letter, number, and symbol."
             );
         }
 
@@ -246,13 +282,23 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
                 "Login and password are required."
             );
         }
+
+        // Make sure both login fields contain string values
+        if (body["login"].t() != crow::json::type::String ||
+            body["password"].t() != crow::json::type::String) {
+
+                return crow::response(
+                    400,
+                    "Login and password must be text values."
+                );
+            }
         
         // Read the submitted login value and password
         string login = body["login"].s();
         string password = body["password"].s();
         
         // Reject empty login fields
-        if (login.empty() || password.empty()) {
+        if (isBlank(login) || isBlank(password)) {
             return crow::response(
                 400,
                 "Login and password cannot be empty."
