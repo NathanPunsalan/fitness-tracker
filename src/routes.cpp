@@ -246,13 +246,29 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
         string passwordHash = hashPassword(password);
 
         // Attempt to create user account
-        if (!database.createUser(username, email, passwordHash)) {
+        DatabaseResult result = database.createUser(
+            username,
+            email,
+            passwordHash
+        );
+
+        // A username or email with the submitted value already exists
+        if (result == DatabaseResult::Conflict) {
             return crow::response(
-                400,
+                409,
+                "Username or email already exists."
+            );
+        }
+
+        // An unexpected database error prevented account creation
+        if (result == DatabaseResult::Error) {
+            return crow::response(
+                500,
                 "Unable to create user account."
             );
         }
 
+        // The Account was successfully created
         return crow::response(
             201,
             "User account created successfully."

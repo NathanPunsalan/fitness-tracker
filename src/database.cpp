@@ -157,7 +157,7 @@ void Database::disconnect() {
 }
 
 // Creates new user and stores their username, email, and hashed password
-bool Database::createUser(
+DatabaseResult Database::createUser(
     const string& username,
     const string& email,
     const string& passwordHash
@@ -181,7 +181,7 @@ bool Database::createUser(
         cerr << "Failed to prepare user insert statement: "
              << sqlite3_errmsg(db) << endl;
 
-        return false;
+        return DatabaseResult::Error;
     }
 
     // Bind the user account values to the SQL placeholders
@@ -190,7 +190,7 @@ bool Database::createUser(
         !bindText(statement, 3, passwordHash)) {
 
             sqlite3_finalize(statement);
-            return false;
+            return DatabaseResult::Error;
         }
 
     // Execute the prepared INSERT statement
@@ -198,15 +198,24 @@ bool Database::createUser(
 
     sqlite3_finalize(statement);
 
-    // SQLITE_DONE means the INSERT completed successfully
-    if (result != SQLITE_DONE) {
-        cerr << "Failed to create user: "
-             << sqlite3_errmsg(db) << endl;
-
-        return false;
+    // User account was created successfully
+    if (result == SQLITE_DONE) {
+        return DatabaseResult::Success;
     }
 
-    return true;
+    // A database constraint was violated
+    if (result == SQLITE_CONSTRAINT) {
+        cerr << "User creation conflict: "
+             << sqlite3_errmsg(db) << endl;
+
+        return DatabaseResult::Conflict;
+    }
+   
+    // Any other SQLite result represents an unexpected database error
+    cerr << "Failed to create user: "
+         << sqlite3_errmsg(db) << endl;
+
+    return DatabaseResult::Error;
 }
 
 // Retrieves a user's password hash using username or email

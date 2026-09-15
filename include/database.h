@@ -4,6 +4,14 @@
 #include <sqlite3.h>
 #include <string>
 
+// Represents the possible outcomes of a database operation
+enum class DatabaseResult {
+    Success,
+    NotFound,
+    Conflict,
+    Error
+};
+
 // Handles the SQLite database connection for the app
 class Database {
 private:
@@ -40,8 +48,8 @@ public:
     void disconnect();
 
     // Creates new user account in database
-    // Returns true if user account was created successfully
-    bool createUser(
+    // Returns result of user creation database operation
+    DatabaseResult createUser(
         const std::string& username,
         const std::string& email,
         const std::string& passwordHash
