@@ -219,7 +219,7 @@ DatabaseResult Database::createUser(
 }
 
 // Retrieves a user's password hash using username or email
-bool Database::getUserLoginData(
+DatabaseResult Database::getUserLoginData(
     const string& login,
     int& userId,
     string& passwordHash
@@ -244,16 +244,16 @@ bool Database::getUserLoginData(
         cerr << "Failed to prepare user lookup statement: "
              << sqlite3_errmsg(db) << endl;
 
-        return false;
+        return DatabaseResult::Error;
     }
 
     // Bind the login value to both the username and email placeholders
     if (!bindText(statement, 1, login) ||
         !bindText(statement, 2, login)) {
-           
-            sqlite3_finalize(statement);
-            return false;
-        }
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
 
     // Execute query
     result = sqlite3_step(statement);
@@ -268,25 +268,40 @@ bool Database::getUserLoginData(
         const unsigned char* storedHash =
             sqlite3_column_text(statement, 1);
 
-        // Ensures SQLite returned a valid value
-        if (storedHash != nullptr) {
-            passwordHash = 
-                reinterpret_cast<const char*>(storedHash);
+        // Ensure SQLite returned a valid password hash
+        if (storedHash == nullptr) {
+            cerr << "User login data contained a null password hash." << endl;
+
+            sqlite3_finalize(statement);
+            return DatabaseResult::Error;
         }
+
+        passwordHash =
+            reinterpret_cast<const char*>(storedHash);
 
         sqlite3_finalize(statement);
 
-        return true;
+        return DatabaseResult::Success;
     }
 
-    // No matching user was found
+    // SQLITE_DONE means the query completed but no matching user was found
+    if (result == SQLITE_DONE) {
+        sqlite3_finalize(statement);
+
+        return DatabaseResult::NotFound;
+    }
+
+    // Any other result represents an unexpected database error
+    cerr << "Failed to retrieve user login data: "
+         << sqlite3_errmsg(db) << endl;
+
     sqlite3_finalize(statement);
 
-    return false;
+    return DatabaseResult::Error;
 }
 
 // Creates a new authenticated session for a user
-bool Database::createSession(
+DatabaseResult Database::createSession(
     int userId,
     const string& sessionToken,
     const string& expiresAt
@@ -309,7 +324,7 @@ bool Database::createSession(
         cerr << "Failed to prepare session insert statement: "
              << sqlite3_errmsg(db) << endl;
 
-        return false;
+        return DatabaseResult::Error;
     }
 
     // Bind the user ID to the first placeholder
@@ -324,7 +339,7 @@ bool Database::createSession(
              << sqlite3_errmsg(db) << endl;
             
         sqlite3_finalize(statement);
-        return false;
+        return DatabaseResult::Error;
     }
 
     // Bind the session token and expiration time
@@ -332,7 +347,7 @@ bool Database::createSession(
         !bindText(statement, 3, expiresAt)) {
 
             sqlite3_finalize(statement);
-            return false;
+            return DatabaseResult::Error;
         }
 
     // Execute the INSERT statement
@@ -344,16 +359,16 @@ bool Database::createSession(
         cerr << "Failed to create session: "
              << sqlite3_errmsg(db) << endl;
 
-        return false;
+        return DatabaseResult::Error;
     }
 
-    return true;
+    return DatabaseResult::Success;
 }
 
 // Deletes an authenticated session using its session token
-bool Database::deleteSession(const string& sessionToken) {
+DatabaseResult Database::deleteSession(const string& sessionToken) {
     const char* sql =
-        "DELETE FROM sessions "
+        "DELETE ROM sessions "
         "WHERE session_token = ?;";
 
     sqlite3_stmt* statement = nullptr;
@@ -370,35 +385,43 @@ bool Database::deleteSession(const string& sessionToken) {
     if (result != SQLITE_OK) {
         cerr << "Failed to prepare session delete statement: "
              << sqlite3_errmsg(db) << endl;
-        
-        return false;
+
+        return DatabaseResult::Error;
     }
 
     // Bind the session token to the SQL placeholder
     if (!bindText(statement, 1, sessionToken)) {
         sqlite3_finalize(statement);
-        
-        return false;
+
+        return DatabaseResult::Error;
     }
 
     // Execute the DELETE statement
     result = sqlite3_step(statement);
 
-    sqlite3_finalize(statement);
-
-    // SQLITE_DONE means SQLite successfully executed the DELETE
-    if (result != SQLITE_DONE) {
+    if (result!= SQLITE_DONE) {
         cerr << "Failed to delete session: "
              << sqlite3_errmsg(db) << endl;
 
-        return false;
+        sqlite3_finalize(statement);
+
+        return DatabaseResult::Error;
     }
 
-    return true;
+    // Check matching session was deleted
+    int deletedRows = sqlite3_changes(db);
+
+    sqlite3_finalize(statement);
+
+    if (deletedRows == 0) {
+        return DatabaseResult::NotFound;
+    }
+
+    return DatabaseResult::Success;
 }
 
 // Check whether a session token belongs to a valid, unexpired session
-bool Database::validateSession(
+DatabaseResult Database::validateSession(
     const std::string& sessionToken,
     int& userId
 ) {
@@ -407,7 +430,7 @@ bool Database::validateSession(
         "FROM sessions "
         "WHERE session_token = ? "
         "AND expires_at > CURRENT_TIMESTAMP;";
-    
+
     sqlite3_stmt* statement = nullptr;
 
     // Prepare the session lookup statement
@@ -421,33 +444,43 @@ bool Database::validateSession(
 
     if (result != SQLITE_OK) {
         cerr << "Failed to prepare session validation statement: "
-             << sqlite3_errmsg(db) << endl;
+             << sqlite3_errmsg(db) << endl;\
 
-        return false;
+        return DatabaseResult::Error;
     }
 
     // Bind the session token to the SQL placeholder
-    if (!bindText(statement, 1, sessionToken)) {
+    if(!bindText(statement, 1, sessionToken)) {
         sqlite3_finalize(statement);
 
-        return false;
+        return DatabaseResult::Error;
     }
 
     // Execute the query
     result = sqlite3_step(statement);
 
-    // SQLITE_ROW means a valid, unexpired session was found
+    // SQLITE_ROW means a valid session was found
     if (result == SQLITE_ROW) {
         userId = sqlite3_column_int(statement, 0);
 
         sqlite3_finalize(statement);
 
-        return true;
+        return DatabaseResult::Success;
     }
 
-    // No matching valid session was found
-    sqlite3_finalize(statement);
+    // SQLITE_DONE means no valid session was found
+    if (result == SQLITE_DONE) {
+        sqlite3_finalize(statement);
+        
+        return DatabaseResult::NotFound;
+    }
 
-    return false;
+    // Any other result represents an unexpected database error
+    cerr << "Failed to validate session: "
+         << sqlite3_errmsg(db) << endl;
+
+         sqlite3_finalize(statement);
+
+         return DatabaseResult::Error;
 }
 

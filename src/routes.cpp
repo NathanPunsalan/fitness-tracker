@@ -62,14 +62,25 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
         int userId;
         string authenticationError;
 
-        if(!authenticateRequest(
+        AuthenticationResult authenticationResult = authenticateRequest(
             request,
             database,
             userId,
             authenticationError
-        )) {
+        );
+
+        // The request does not contain a valid authenticated session
+        if (authenticationResult == AuthenticationResult::Unauthorized) {
             return crow::response(
                 401,
+                authenticationError
+            );
+        }
+
+        // An internal error prevented session validation
+        if (authenticationResult == AuthenticationResult::Error) {
+            return crow::response(
+                500,
                 authenticationError
             );
         }
@@ -90,15 +101,26 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
         int userId;
         string authenticationError;
 
-        if (!authenticateRequest(
+        AuthenticationResult authenticationResult = authenticateRequest(
             request,
             database,
             userId,
             authenticationError
-        )) {
+        );
+
+        // The request does not contain a valid authenticated session
+        if (authenticationResult == AuthenticationResult::Unauthorized) {
             return crow::response(
-            401,
-            authenticationError
+                401,
+                authenticationError
+            );
+        }
+
+        // An internal error prevented session validation
+        if (authenticationResult == AuthenticationResult::Error) {
+            return crow::response(
+                500,
+                authenticationError
             );
         }
 
@@ -118,15 +140,26 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
         int userId;
         string authenticationError;
 
-        if (!authenticateRequest(
+        AuthenticationResult authenticationResult = authenticateRequest(
             request,
             database,
             userId,
             authenticationError
-        )) {
+        );
+
+        // The request does not contain a valid authenticated session
+        if (authenticationResult == AuthenticationResult::Unauthorized) {
             return crow::response(
-            401,
-            authenticationError
+                401,
+                authenticationError
+            );
+        }
+
+        // An internal error prevented session validation
+        if (authenticationResult == AuthenticationResult::Error) {
+            return crow::response(
+                500,
+                authenticationError
             );
         }
 
@@ -146,15 +179,26 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
         int userId;
         string authenticationError;
 
-        if (!authenticateRequest(
+        AuthenticationResult authenticationResult = authenticateRequest(
             request,
             database,
             userId,
             authenticationError
-        )) {
+        );
+
+        // The request does not contain a valid authenticated session
+        if (authenticationResult == AuthenticationResult::Unauthorized) {
             return crow::response(
-            401,
-            authenticationError
+                401,
+                authenticationError
+            );
+        }
+
+        // An internal error prevented session validation
+        if (authenticationResult == AuthenticationResult::Error) {
+            return crow::response(
+                500,
+                authenticationError
             );
         }
 
@@ -325,10 +369,23 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
         int userId;
         string passwordHash;
 
-        if (!database.getUserLoginData(login, userId, passwordHash)) {
+        DatabaseResult loginResult = database.getUserLoginData(
+            login,
+            userId,
+            passwordHash
+        );
+
+        if (loginResult == DatabaseResult::NotFound) {
             return crow::response(
                 401,
                 "Invalid login credentials."
+            );
+        }
+
+        if (loginResult == DatabaseResult::Error) {
+            return crow::response(
+                500,
+                "Unable to process login."
             );
         }
 
@@ -345,7 +402,13 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
         string expiresAt = createSessionExpiration();
 
         // Store the new session in the database
-        if (!database.createSession(userId, sessionToken, expiresAt)) {
+        DatabaseResult sessionResult = database.createSession(
+            userId,
+            sessionToken,
+            expiresAt
+        );
+
+        if (sessionResult == DatabaseResult::Error) {
             return crow::response(
                 500,
                 "Unable to create session."
@@ -387,7 +450,16 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
         }
 
         // Delete the matching session from the database
-        if (!database.deleteSession(sessionToken)) {
+        DatabaseResult logoutResult = database.deleteSession(sessionToken);
+
+        if (logoutResult == DatabaseResult::NotFound) {
+            return crow::response(
+                401,
+                "No active session found."
+            );
+        }
+
+        if (logoutResult == DatabaseResult::Error) {
             return crow::response(
                 500,
                 "Unable to log out."
@@ -422,14 +494,25 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
         string authenticationError;
 
         // Validate the session cookie using authentication function
-        if (!authenticateRequest(
+        AuthenticationResult authenticationResult = authenticateRequest(
             request,
             database,
             userId,
             authenticationError
-        )) {
+        );
+
+        // The request does not contain a valid authenticated session
+        if (authenticationResult == AuthenticationResult::Unauthorized) {
             return crow::response(
                 401,
+                authenticationError
+            );
+        }
+
+        // An internal error prevented session validation
+        if (authenticationResult == AuthenticationResult::Error) {
+            return crow::response(
+                500,
                 authenticationError
             );
         }

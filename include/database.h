@@ -56,26 +56,26 @@ public:
     );
 
     // Retrieves a user's password hash using their username or email
-    bool getUserLoginData(
+    DatabaseResult getUserLoginData(
         const std::string& login,
         int& userId,
         std::string& passwordHash
     );
 
     // Creates new authenticated session for user
-    bool createSession(
+    DatabaseResult createSession(
         int userId,
         const std::string& sessionToken,
         const std::string& expiresAt
     );
 
     // Deletes an authenticated session using its session token
-    bool deleteSession(
+    DatabaseResult deleteSession(
         const std::string& sessionToken
     );
 
     // Checks whether a session token belongs to valid, unexpired session
-    bool validateSession(
+    DatabaseResult validateSession(
         const std::string& sessionToken,
         int& userId
     );

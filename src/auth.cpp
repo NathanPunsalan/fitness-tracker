@@ -127,7 +127,7 @@ bool getSessionTokenFromCookie(
 }
 
 // Authenticate a request using the user's session cookie
-bool authenticateRequest(
+AuthenticationResult authenticateRequest(
     const crow::request& request,
     Database& database,
     int& userId,
@@ -142,16 +142,29 @@ bool authenticateRequest(
     if (!getSessionTokenFromCookie (cookieHeader, sessionToken)) {
         errorMessage = "Authentication required.";
 
-        return false;
+        return AuthenticationResult::Unauthorized;
     }
 
     // Validate the session and retrieve the authenticated user's ID
-    if (!database.validateSession(sessionToken, userId)) {
+    DatabaseResult sessionResult = database.validateSession(
+        sessionToken,
+        userId
+    );
+
+    // No valid session found
+    if (sessionResult == DatabaseResult::NotFound) {
         errorMessage = "Invalid or expired session.";
 
-        return false;
+        return AuthenticationResult::Unauthorized;
+    }
+
+    // Unexpected database error prevented session validation
+    if (sessionResult == DatabaseResult::Error) {
+        errorMessage = "Unable to validate session.";
+
+        return AuthenticationResult::Error;
     }
 
     // Authentication succeeded
-    return true;
+    return AuthenticationResult::Success;
 }

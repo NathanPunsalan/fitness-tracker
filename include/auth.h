@@ -5,6 +5,13 @@
 #include <crow.h>
 #include <database.h>
 
+// Represents the possible outcomes of request authentication
+enum class AuthenticationResult {
+    Success,
+    Unauthorized,
+    Error
+};
+
 // Hashes a plain-text password using libsodium
 std::string hashPassword(const std::string& password);
 
@@ -27,7 +34,7 @@ bool getSessionTokenFromCookie(
 );
 
 // Authenticates a request using the user's session cookie
-bool authenticateRequest(
+AuthenticationResult authenticateRequest(
     const crow::request& request,
     Database& database,
     int& userId,
