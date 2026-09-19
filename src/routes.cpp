@@ -6,6 +6,52 @@
 
 using namespace std;
 
+// Creates a standardized JSON response for successful API requests
+crow::response createJsonSuccessResponse(
+    int statusCode,
+    const string& message
+) {
+    crow::json::wvalue responseBody;
+
+    responseBody["success"] = true;
+    responseBody["message"] = message;
+
+    crow::response response(
+        statusCode,
+        responseBody
+    );
+
+    response.add_header(
+        "Content-Type",
+        "application/json"
+    );
+
+    return response;
+}
+
+// Creates a standardized JSON response for failed API requests
+crow::response createJsonErrorResponse(
+    int statusCode,
+    const string& error
+) {
+    crow::json::wvalue responseBody;
+
+    responseBody["success"] = false;
+    responseBody["error"] = error;
+
+    crow::response response(
+        statusCode,
+        responseBody
+    );
+
+    response.add_header(
+        "Content-Type",
+        "application/json"
+    );
+
+    return response;
+}
+
 // Creates the navigation menu shared by the application's main pages
 string createNavigation()
 {
@@ -221,7 +267,7 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
 
         // Make sure request contains valid JSON
         if (!body) {
-            return crow::response(
+            return createJsonErrorResponse(
                 400,
                 "Invalid registration data."
             );
@@ -232,7 +278,7 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
             !body.has("email") ||
             !body.has("password")) {
                 
-                return crow::response(
+                return createJsonErrorResponse(
                     400,
                     "Username, email, and password are required."
                 );
@@ -243,7 +289,7 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
             body["email"].t() != crow::json::type::String ||
             body["password"].t() != crow::json::type::String) {
 
-                return crow::response(
+                return createJsonErrorResponse(
                     400,
                     "Username, email, and password must be text values."
                 );
@@ -256,7 +302,7 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
 
         // Reject empty registration fields
         if (isBlank(username) || isBlank(email) || isBlank(password)) {
-            return crow::response(
+            return createJsonErrorResponse(
                 400,
                 "Username, email, and password cannot be empty."
             );
@@ -264,7 +310,7 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
 
         // Validate username requirements
         if (!isValidUsername(username)) {
-            return crow::response(
+            return createJsonErrorResponse(
                 400,
                 "Username must be between 5 and 15 characters."
             );
@@ -272,7 +318,7 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
 
         // Validate email format
         if (!isValidEmail(email)) {
-            return crow::response(
+            return createJsonErrorResponse(
                 400,
                 "Please enter a valid email address."
             );
@@ -280,7 +326,7 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
 
         // Validate password security requirements
         if (!isValidPassword(password)) {
-            return crow::response(
+            return createJsonErrorResponse(
                 400,
                 "Password must be at least 8 characters and include an uppercase letter, lowercase letter, number, and symbol."
             );
@@ -298,7 +344,7 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
 
         // A username or email with the submitted value already exists
         if (result == DatabaseResult::Conflict) {
-            return crow::response(
+            return createJsonErrorResponse(
                 409,
                 "Username or email already exists."
             );
@@ -306,14 +352,14 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
 
         // An unexpected database error prevented account creation
         if (result == DatabaseResult::Error) {
-            return crow::response(
+            return createJsonErrorResponse(
                 500,
                 "Unable to create user account."
             );
         }
 
         // The Account was successfully created
-        return crow::response(
+        return createJsonSuccessResponse(
             201,
             "User account created successfully."
         );
@@ -327,7 +373,7 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
 
         // Ensures the request contains valid JSON
         if (!body) {
-            return crow::response(
+            return createJsonErrorResponse(
                 400,
                 "Invalid login data."
             );
@@ -337,7 +383,7 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
         if (!body.has("login") ||
             !body.has("password")) {
 
-            return crow::response(
+            return createJsonErrorResponse(
                 400,
                 "Login and password are required."
             );
@@ -347,7 +393,7 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
         if (body["login"].t() != crow::json::type::String ||
             body["password"].t() != crow::json::type::String) {
 
-                return crow::response(
+                return createJsonErrorResponse(
                     400,
                     "Login and password must be text values."
                 );
@@ -359,7 +405,7 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
         
         // Reject empty login fields
         if (isBlank(login) || isBlank(password)) {
-            return crow::response(
+            return createJsonErrorResponse(
                 400,
                 "Login and password cannot be empty."
             );
@@ -376,14 +422,14 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
         );
 
         if (loginResult == DatabaseResult::NotFound) {
-            return crow::response(
+            return createJsonErrorResponse(
                 401,
                 "Invalid login credentials."
             );
         }
 
         if (loginResult == DatabaseResult::Error) {
-            return crow::response(
+            return createJsonErrorResponse(
                 500,
                 "Unable to process login."
             );
@@ -391,7 +437,7 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
 
         // Verify the submitted password against the stored password hash
         if (!verifyPassword(password, passwordHash)) {
-            return crow::response(
+            return createJsonErrorResponse(
                 401,
                 "Invalid login credentials."
             );
@@ -409,14 +455,14 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
         );
 
         if (sessionResult == DatabaseResult::Error) {
-            return crow::response(
+            return createJsonErrorResponse(
                 500,
                 "Unable to create session."
             );
         }
 
         // Create the successful login response
-        crow::response response(
+        crow::response response = createJsonSuccessResponse(
                 200,
                 "Login successful."
             );
@@ -443,7 +489,7 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
         string sessionToken;
 
         if (!getSessionTokenFromCookie(cookieHeader, sessionToken)) {
-            return crow::response(
+            return createJsonErrorResponse(
                 401,
                 "No active session found."
             );
@@ -453,21 +499,21 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
         DatabaseResult logoutResult = database.deleteSession(sessionToken);
 
         if (logoutResult == DatabaseResult::NotFound) {
-            return crow::response(
+            return createJsonErrorResponse(
                 401,
                 "No active session found."
             );
         }
 
         if (logoutResult == DatabaseResult::Error) {
-            return crow::response(
+            return createJsonErrorResponse(
                 500,
                 "Unable to log out."
             );
         }
 
         // Create the successful logout response
-        crow::response response(
+        crow::response response = createJsonSuccessResponse(
             200,
             "Logout successful."
         );
@@ -503,7 +549,7 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
 
         // The request does not contain a valid authenticated session
         if (authenticationResult == AuthenticationResult::Unauthorized) {
-            return crow::response(
+            return createJsonErrorResponse(
                 401,
                 authenticationError
             );
@@ -511,13 +557,13 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
 
         // An internal error prevented session validation
         if (authenticationResult == AuthenticationResult::Error) {
-            return crow::response(
+            return createJsonErrorResponse(
                 500,
                 authenticationError
             );
         }
 
-        return crow::response(
+        return createJsonSuccessResponse(
             200,
             "Authenticated."
         );
@@ -525,7 +571,7 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
     
     // Health route used to verify that the web server is responding correctly
     CROW_ROUTE(app, "/api/health")([]() {
-        return crow::response(
+        return createJsonSuccessResponse(
             200,
             "Fitness Tracker API is healthy."
         );
@@ -534,7 +580,7 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
     // Handles request for routes that do not exist
     CROW_CATCHALL_ROUTE(app)
     ([]() {
-        return crow::response(
+        return createJsonErrorResponse(
             404,
             "404 - Page not found."
         );
