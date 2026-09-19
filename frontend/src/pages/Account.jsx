@@ -1,11 +1,15 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { logoutUser } from "../services/authService";
-import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 function Account() {
     // Store the message returned after logout
     const [message, setMessage] = useState("");
+
+    // Access the shared authentication state
+    const { logout } = useAuth();
 
     // Allows the application to redirect the user after logout
     const navigate = useNavigate();
@@ -18,8 +22,9 @@ function Account() {
         // Display the backend response to the user
         setMessage(result.message);
 
-        // Redirect to the login page after a successful logout
+        // Update authentication state and redirect after successful logout
         if (result.success) {
+            logout();
             navigate("/login");
         }
     }

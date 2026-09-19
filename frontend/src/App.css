@@ -3,3 +3,19 @@
     margin: 0 auto;
     padding: 2rem;
 }
+
+.navbar {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 16px 32px;
+}
+
+.navbar a {
+    text-decoration: none;
+}
+
+.navbar a.active {
+    font-weight: bold;
+    text-decoration: underline;
+}
