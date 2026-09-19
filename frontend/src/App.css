@@ -1,21 +1,30 @@
-#root {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 2rem;
-}
-
 .navbar {
     display: flex;
     align-items: center;
-    gap: 24px;
-    padding: 16px 32px;
+    gap: var(--space-lg);
+
+    padding: var(--space-md) var(--page-padding);
 }
 
 .navbar a {
+    color: var(--color-text-muted);
+    font-weight: var(--font-weight-medium);
     text-decoration: none;
 }
 
+.navbar a:hover {
+    color: var(--color-text);
+}
+
 .navbar a.active {
-    font-weight: bold;
-    text-decoration: underline;
+    color: var(--color-primary);
+    font-weight: var(--font-weight-semibold);
+}
+
+.main-content {
+    width: 100%;
+    max-width: var(--content-max-width);
+    margin: 0 auto;
+    padding: var(--page-padding);
+    box-sizing: border-box;
 }
