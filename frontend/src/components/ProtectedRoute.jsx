@@ -1,5 +1,6 @@
 import { Navigate } from "react-router-dom";
 
+import LoadingIndicator from "./ui/LoadingIndicator";
 import { useAuth } from "../context/AuthContext";
 
 function ProtectedRoute({ children }) {
@@ -7,9 +8,13 @@ function ProtectedRoute({ children }) {
     const { authenticated, loading } = useAuth();
 
     // Avoid rendering protected content until
-    // the initial session check is complete
+    // the initial session check is complete.
     if (loading) {
-        return <p>Checking authentication...</p>;
+        return (
+            <div className="page-loading">
+                <LoadingIndicator label="Checking authentication..." />
+            </div>
+        );
     }
 
     // Redirect unauthenticated users to the login page

@@ -1,0 +1,57 @@
+.ui-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+
+    min-height: 2.75rem;
+    padding: var(--space-sm) var(--space-lg);
+
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+
+    font-family: inherit;
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-semibold);
+
+    cursor: pointer;
+
+    transition:
+        background-color 0.2s ease,
+        border-color 0.2s ease,
+        color 0.2s ease,
+        opacity 0.2s ease;
+}
+
+/* Main action button */
+.ui-button--primary {
+    color: var(--color-background);
+    background-color: var(--color-primary);
+}
+
+.ui-button--primary:hover:not(:disabled) {
+    background-color: var(--color-primary-hover);
+}
+
+/* Lower-emphasis action button */
+.ui-button--secondary {
+    color: var(--color-text);
+    background-color: var(--color-surface-elevated);
+    border-color: var(--color-border);
+}
+
+.ui-button--secondary:hover:not(:disabled) {
+    border-color: var(--color-primary);
+}
+
+/* Provide a visible keyboard focus indicator */
+.ui-button:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+/* Disabled and loading buttons should not appear interactive */
+.ui-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}

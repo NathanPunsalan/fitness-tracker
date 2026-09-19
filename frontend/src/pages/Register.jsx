@@ -1,7 +1,11 @@
 import { useState } from "react";
-
-import { registerUser } from "../services/authService";
 import { useNavigate } from "react-router-dom";
+
+import Button from "../components/ui/Button";
+import Card from "../components/ui/Card";
+import FeedbackMessage from "../components/ui/FeedbackMessage";
+import FormField from "../components/ui/FormField";
+import { registerUser } from "../services/authService";
 
 function Register() {
     // Store the values entered into each registration field
@@ -9,8 +13,9 @@ function Register() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
 
-    // Store the message returned after registration
+    // Store the text and visual type of the latest feedback message
     const [message, setMessage] = useState("");
+    const [messageType, setMessageType] = useState("info");
 
     // Track whether a registration request is currently processing
     const [loading, setLoading] = useState(false);
@@ -33,14 +38,17 @@ function Register() {
         setLoading(true);
 
         try {
-            // Send registration information to backend
+            // Send registration information to the backend
             const result = await registerUser(
                 username,
                 email,
                 password
             );
 
-            // Display backend response to user
+            // Select the appropriate feedback style for the result
+            setMessageType(
+                result.success ? "success" : "error"
+            );
             setMessage(result.message);
 
             // Redirect to the login page after successful registration
@@ -49,8 +57,11 @@ function Register() {
                 return;
             }
         } catch (error) {
-            // Display a safe message if the request unexpectedly fails
-            setMessage("Unable to create account. Please try again.");
+            // Display a safe error if the request unexpectedly fails
+            setMessageType("error");
+            setMessage(
+                "Unable to create account. Please try again."
+            );
         } finally {
             // End the loading state after the request finishes
             setLoading(false);
@@ -58,70 +69,66 @@ function Register() {
     }
 
     return (
-        <div>
+        <Card
+            as="section"
+            className="auth-card"
+            shadow
+        >
             <h1>Create Account</h1>
 
             <form onSubmit={handleSubmit}>
-                <div>
-                    <label htmlFor="username">
-                        Username
-                    </label>
-
-                    <input
-                        id="username"
-                        type="text"
-                        value={username}
-                        onChange={(event) =>
-                            setUsername(event.target.value)
-                        }
-                        required
-                    />
-                </div>
-
-                <div>
-                    <label htmlFor="email">
-                        Email
-                    </label>
-
-                    <input
-                        id="email"
-                        type="email"
-                        value={email}
-                        onChange={(event) =>
-                            setEmail(event.target.value)
-                        }
-                        required
-                    />
-                </div>
-
-                <div>
-                    <label htmlFor="password">
-                        Password
-                    </label>
-
-                    <input
-                        id="password"
-                        type="password"
-                        value={password}
-                        onChange={(event) =>
-                            setPassword(event.target.value)
-                        }
-                        required
-                    />
-                </div>
-
-                <button
-                    type="submit"
+                <FormField
+                    id="username"
+                    label="Username"
+                    type="text"
+                    value={username}
+                    onChange={(event) =>
+                        setUsername(event.target.value)
+                    }
                     disabled={loading}
+                    autoComplete="username"
+                    required
+                />
+
+                <FormField
+                    id="email"
+                    label="Email"
+                    type="email"
+                    value={email}
+                    onChange={(event) =>
+                        setEmail(event.target.value)
+                    }
+                    disabled={loading}
+                    autoComplete="email"
+                    required
+                />
+
+                <FormField
+                    id="password"
+                    label="Password"
+                    type="password"
+                    value={password}
+                    onChange={(event) =>
+                        setPassword(event.target.value)
+                    }
+                    disabled={loading}
+                    autoComplete="new-password"
+                    required
+                />
+
+                <Button
+                    type="submit"
+                    loading={loading}
+                    loadingText="Registering..."
                 >
-                    {loading ? "Registering..." : "Register"}
-                </button>
+                    Register
+                </Button>
             </form>
 
-            {message && (
-                <p>{message}</p>
-            )}
-        </div>
+            <FeedbackMessage type={messageType}>
+                {message}
+            </FeedbackMessage>
+        </Card>
     );
 }
 

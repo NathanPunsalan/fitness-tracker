@@ -1,16 +1,21 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { loginUser } from "../services/authService";
+import Button from "../components/ui/Button";
+import Card from "../components/ui/Card";
+import FeedbackMessage from "../components/ui/FeedbackMessage";
+import FormField from "../components/ui/FormField";
 import { useAuth } from "../context/AuthContext";
+import { loginUser } from "../services/authService";
 
 function Login() {
     // Store the username/email and password entered by the user
     const [login, setLogin] = useState("");
     const [password, setPassword] = useState("");
 
-    // Store the message returned after login
+    // Store the text and visual type of the latest feedback message
     const [message, setMessage] = useState("");
+    const [messageType, setMessageType] = useState("info");
 
     // Track whether a login request is currently processing
     const [loading, setLoading] = useState(false);
@@ -42,7 +47,10 @@ function Login() {
                 password
             );
 
-            // Display backend response to the user
+            // Select the appropriate feedback style for the result
+            setMessageType(
+                result.success ? "success" : "error"
+            );
             setMessage(result.message);
 
             // Update authentication state and redirect after successful login
@@ -52,7 +60,8 @@ function Login() {
                 return;
             }
         } catch (error) {
-            // Display a safe message if the request unexpectedly fails
+            // Display a safe error if the request unexpectedly fails
+            setMessageType("error");
             setMessage("Unable to log in. Please try again.");
         } finally {
             // End the loading state after the request finishes
@@ -61,54 +70,53 @@ function Login() {
     }
 
     return (
-        <div>
+        <Card
+            as="section"
+            className="auth-card"
+            shadow
+        >
             <h1>Login</h1>
 
             <form onSubmit={handleSubmit}>
-                <div>
-                    <label htmlFor="login">
-                        Username or Email
-                    </label>
-
-                    <input
-                        id="login"
-                        type="text"
-                        value={login}
-                        onChange={(event) =>
-                            setLogin(event.target.value)
-                        }
-                        required
-                    />
-                </div>
-
-                <div>
-                    <label htmlFor="password">
-                        Password
-                    </label>
-
-                    <input
-                        id="password"
-                        type="password"
-                        value={password}
-                        onChange={(event) =>
-                            setPassword(event.target.value)
-                        }
-                        required
-                    />
-                </div>
-
-                <button
-                    type="submit"
+                <FormField
+                    id="login"
+                    label="Username or Email"
+                    type="text"
+                    value={login}
+                    onChange={(event) =>
+                        setLogin(event.target.value)
+                    }
                     disabled={loading}
+                    autoComplete="username"
+                    required
+                />
+
+                <FormField
+                    id="password"
+                    label="Password"
+                    type="password"
+                    value={password}
+                    onChange={(event) =>
+                        setPassword(event.target.value)
+                    }
+                    disabled={loading}
+                    autoComplete="current-password"
+                    required
+                />
+
+                <Button
+                    type="submit"
+                    loading={loading}
+                    loadingText="Logging in..."
                 >
-                    {loading ? "Logging in..." : "Login"}
-                </button>
+                    Login
+                </Button>
             </form>
 
-            {message && (
-                <p>{message}</p>
-            )}
-        </div>
+            <FeedbackMessage type={messageType}>
+                {message}
+            </FeedbackMessage>
+        </Card>
     );
 }
 

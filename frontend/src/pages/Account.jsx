@@ -1,12 +1,16 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { logoutUser } from "../services/authService";
+import Button from "../components/ui/Button";
+import Card from "../components/ui/Card";
+import FeedbackMessage from "../components/ui/FeedbackMessage";
 import { useAuth } from "../context/AuthContext";
+import { logoutUser } from "../services/authService";
 
 function Account() {
-    // Store the message returned after logout
+    // Store the text and visual type of the latest feedback message
     const [message, setMessage] = useState("");
+    const [messageType, setMessageType] = useState("info");
 
     // Track whether the logout request is currently processing
     const [loading, setLoading] = useState(false);
@@ -32,7 +36,10 @@ function Account() {
             // Ask the backend to delete the current session
             const result = await logoutUser();
 
-            // Display the backend response to the user
+            // Select the appropriate feedback style for the result
+            setMessageType(
+                result.success ? "success" : "error"
+            );
             setMessage(result.message);
 
             // Update authentication state and redirect after successful logout
@@ -42,7 +49,8 @@ function Account() {
                 return;
             }
         } catch (error) {
-            // Display a safe message if the request unexpectedly fails
+            // Display a safe error if the request unexpectedly fails
+            setMessageType("error");
             setMessage("Unable to log out. Please try again.");
         } finally {
             // End the loading state after the request finishes
@@ -51,20 +59,26 @@ function Account() {
     }
 
     return (
-        <div>
+        <Card
+            as="section"
+            className="auth-card"
+            shadow
+        >
             <h1>Account</h1>
 
-            <button
+            <Button
+                variant="secondary"
                 onClick={handleLogout}
-                disabled={loading}
+                loading={loading}
+                loadingText="Logging out..."
             >
-                {loading ? "Logging out..." : "Logout"}
-            </button>
+                Logout
+            </Button>
 
-            {message && (
-                <p>{message}</p>
-            )}
-        </div>
+            <FeedbackMessage type={messageType}>
+                {message}
+            </FeedbackMessage>
+        </Card>
     );
 }
 

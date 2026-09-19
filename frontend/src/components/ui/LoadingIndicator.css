@@ -1,0 +1,43 @@
+.ui-loading {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+
+    color: inherit;
+    font-size: var(--font-size-md);
+}
+
+.ui-loading__spinner {
+    width: 1.25rem;
+    height: 1.25rem;
+
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+
+    animation: ui-loading-spin 0.8s linear infinite;
+}
+
+/* Smaller version for loading indicators placed inside buttons */
+.ui-loading--small {
+    font-size: var(--font-size-sm);
+}
+
+.ui-loading--small .ui-loading__spinner {
+    width: 1rem;
+    height: 1rem;
+}
+
+/* Respect the user's operating-system motion preference */
+@media (prefers-reduced-motion: reduce) {
+    .ui-loading__spinner {
+        animation-duration: 1.5s;
+    }
+}
+
+@keyframes ui-loading-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}

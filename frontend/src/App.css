@@ -28,3 +28,16 @@
     padding: var(--page-padding);
     box-sizing: border-box;
 }
+
+.auth-card {
+    width: 100%;
+    max-width: 28rem;
+    margin: var(--space-xl) auto;
+    box-sizing: border-box;
+}
+
+.page-loading {
+    display: flex;
+    justify-content: center;
+    padding: var(--space-2xl);
+}
