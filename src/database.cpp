@@ -368,7 +368,7 @@ DatabaseResult Database::createSession(
 // Deletes an authenticated session using its session token
 DatabaseResult Database::deleteSession(const string& sessionToken) {
     const char* sql =
-        "DELETE ROM sessions "
+        "DELETE FROM sessions "
         "WHERE session_token = ?;";
 
     sqlite3_stmt* statement = nullptr;
