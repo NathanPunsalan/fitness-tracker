@@ -530,4 +530,13 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
             "Fitness Tracker API is healthy."
         );
     });
+
+    // Handles request for routes that do not exist
+    CROW_CATCHALL_ROUTE(app)
+    ([]() {
+        return crow::response(
+            404,
+            "404 - Page not found."
+        );
+    });
 }
