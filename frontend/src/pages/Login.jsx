@@ -12,6 +12,9 @@ function Login() {
     // Store the message returned after login
     const [message, setMessage] = useState("");
 
+    // Track whether a login request is currently processing
+    const [loading, setLoading] = useState(false);
+
     // Access the shared authentication state
     const { login: setAuthenticated } = useAuth();
 
@@ -23,19 +26,37 @@ function Login() {
         // Prevent the browser from refreshing the page
         event.preventDefault();
 
-        // Send login information to the backend
-        const result = await loginUser(
-            login,
-            password
-        );
+        // Prevent duplicate submissions while login is processing
+        if (loading) {
+            return;
+        }
 
-        // Display backend response to the user
-        setMessage(result.message);
+        // Clear any previous message and begin loading
+        setMessage("");
+        setLoading(true);
 
-        // Update authentication state and redirect after successful login
-        if (result.success) {
-            setAuthenticated();
-            navigate("/");
+        try {
+            // Send login information to the backend
+            const result = await loginUser(
+                login,
+                password
+            );
+
+            // Display backend response to the user
+            setMessage(result.message);
+
+            // Update authentication state and redirect after successful login
+            if (result.success) {
+                setAuthenticated();
+                navigate("/");
+                return;
+            }
+        } catch (error) {
+            // Display a safe message if the request unexpectedly fails
+            setMessage("Unable to log in. Please try again.");
+        } finally {
+            // End the loading state after the request finishes
+            setLoading(false);
         }
     }
 
@@ -76,8 +97,11 @@ function Login() {
                     />
                 </div>
 
-                <button type="submit">
-                    Login
+                <button
+                    type="submit"
+                    disabled={loading}
+                >
+                    {loading ? "Logging in..." : "Login"}
                 </button>
             </form>
 

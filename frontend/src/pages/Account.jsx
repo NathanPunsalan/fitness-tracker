@@ -8,6 +8,9 @@ function Account() {
     // Store the message returned after logout
     const [message, setMessage] = useState("");
 
+    // Track whether the logout request is currently processing
+    const [loading, setLoading] = useState(false);
+
     // Access the shared authentication state
     const { logout } = useAuth();
 
@@ -16,16 +19,34 @@ function Account() {
 
     // Handles the logout request
     async function handleLogout() {
-        // Ask the backend to delete the current session
-        const result = await logoutUser();
+        // Prevent duplicate logout requests
+        if (loading) {
+            return;
+        }
 
-        // Display the backend response to the user
-        setMessage(result.message);
+        // Clear any previous message and begin loading
+        setMessage("");
+        setLoading(true);
 
-        // Update authentication state and redirect after successful logout
-        if (result.success) {
-            logout();
-            navigate("/login");
+        try {
+            // Ask the backend to delete the current session
+            const result = await logoutUser();
+
+            // Display the backend response to the user
+            setMessage(result.message);
+
+            // Update authentication state and redirect after successful logout
+            if (result.success) {
+                logout();
+                navigate("/login");
+                return;
+            }
+        } catch (error) {
+            // Display a safe message if the request unexpectedly fails
+            setMessage("Unable to log out. Please try again.");
+        } finally {
+            // End the loading state after the request finishes
+            setLoading(false);
         }
     }
 
@@ -33,8 +54,11 @@ function Account() {
         <div>
             <h1>Account</h1>
 
-            <button onClick={handleLogout}>
-                Logout
+            <button
+                onClick={handleLogout}
+                disabled={loading}
+            >
+                {loading ? "Logging out..." : "Logout"}
             </button>
 
             {message && (

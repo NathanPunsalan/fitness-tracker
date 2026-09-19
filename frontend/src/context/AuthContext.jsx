@@ -15,10 +15,17 @@ export function AuthProvider({ children }) {
     // Check for an existing session when the application starts
     useEffect(() => {
         async function verifySession() {
-            const result = await checkSession();
+            try {
+                const result = await checkSession();
 
-            setAuthenticated(result.success);
-            setLoading(false);
+                setAuthenticated(result.success);
+            } catch (error) {
+                // Treat a failed session check as unauthenticated
+                setAuthenticated(false);
+            } finally {
+                // Always finish the initial loading state
+                setLoading(false);
+            }
         }
 
         verifySession();
