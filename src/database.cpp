@@ -103,8 +103,8 @@ bool Database::connect() {
 // Creates the required database tables if they do not already exist
 bool Database::initializeSchema() {
 
-    // All CREATE TABLE statements are executed together when the app starts.
-    // IF NOT EXISTS prevents SQLite from replacing tables that already exist.
+    // All CREATE TABLE and CREATE INDEX statements are executed together
+    // when the app starts. IF NOT EXISTS preserves existing user data.
     const char* sql =
         "CREATE TABLE IF NOT EXISTS users ("
         "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -125,7 +125,6 @@ bool Database::initializeSchema() {
         ");"
 
         // Stores the general information for a completed combat-sports session.
-        // Detailed combinations, drills, and rounds will use related tables later.
         "CREATE TABLE IF NOT EXISTS combat_sports_sessions ("
         "id INTEGER PRIMARY KEY AUTOINCREMENT,"
         "user_id INTEGER NOT NULL,"
@@ -139,12 +138,146 @@ bool Database::initializeSchema() {
         "created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
         "updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
         "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"
-        ");";
+        ");"
 
-    // SQLite stores any schema error message in this pointer
+        // Stores reusable techniques created by individual users.
+        // Technique names only need to be unique within the same user's
+        // discipline.
+        "CREATE TABLE IF NOT EXISTS combat_sports_techniques ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "user_id INTEGER NOT NULL,"
+        "discipline TEXT NOT NULL,"
+        "name TEXT NOT NULL,"
+        "category TEXT,"
+        "description TEXT,"
+        "created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "UNIQUE (user_id, discipline, name),"
+        "UNIQUE (user_id, id),"
+        "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"
+        ");"
+
+        // Stores user-created combinations. The individual ordered steps
+        // are stored separately in combat_sports_combination_steps.
+        "CREATE TABLE IF NOT EXISTS combat_sports_combinations ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "user_id INTEGER NOT NULL,"
+        "discipline TEXT NOT NULL,"
+        "name TEXT NOT NULL,"
+        "description TEXT,"
+        "created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "UNIQUE (user_id, discipline, name),"
+        "UNIQUE (user_id, id),"
+        "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"
+        ");"
+
+        // Connects techniques to a combination in a defined order.
+        // The composite foreign keys ensure that the combination and
+        // technique both belong to the same authenticated user.
+        "CREATE TABLE IF NOT EXISTS combat_sports_combination_steps ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "user_id INTEGER NOT NULL,"
+        "combination_id INTEGER NOT NULL,"
+        "technique_id INTEGER NOT NULL,"
+        "step_order INTEGER NOT NULL CHECK (step_order > 0),"
+        "UNIQUE (combination_id, step_order),"
+        "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,"
+        "FOREIGN KEY (user_id, combination_id) "
+        "REFERENCES combat_sports_combinations(user_id, id) "
+        "ON DELETE CASCADE,"
+        "FOREIGN KEY (user_id, technique_id) "
+        "REFERENCES combat_sports_techniques(user_id, id) "
+        "ON DELETE RESTRICT"
+        ");"
+
+        // Stores reusable user-created drills. Seconds are used for the
+        // optional duration so trainer mode can support short intervals.
+        "CREATE TABLE IF NOT EXISTS combat_sports_drills ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "user_id INTEGER NOT NULL,"
+        "discipline TEXT NOT NULL,"
+        "name TEXT NOT NULL,"
+        "instructions TEXT,"
+        "default_duration_seconds INTEGER "
+        "CHECK (default_duration_seconds IS NULL "
+        "OR default_duration_seconds > 0),"
+        "default_repetitions INTEGER "
+        "CHECK (default_repetitions IS NULL "
+        "OR default_repetitions > 0),"
+        "default_rounds INTEGER "
+        "CHECK (default_rounds IS NULL OR default_rounds > 0),"
+        "notes TEXT,"
+        "created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "UNIQUE (user_id, discipline, name),"
+        "UNIQUE (user_id, id),"
+        "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"
+        ");"
+
+        // Stores the ordered techniques and combinations contained in a
+        // drill. Exactly one reference must be selected for each item.
+        "CREATE TABLE IF NOT EXISTS combat_sports_drill_items ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "user_id INTEGER NOT NULL,"
+        "drill_id INTEGER NOT NULL,"
+        "item_type TEXT NOT NULL "
+        "CHECK (item_type IN ('technique', 'combination')),"
+        "technique_id INTEGER,"
+        "combination_id INTEGER,"
+        "item_order INTEGER NOT NULL CHECK (item_order > 0),"
+        "UNIQUE (drill_id, item_order),"
+
+        // A technique item must reference only a technique, while a
+        // combination item must reference only a combination.
+        "CHECK ("
+            "(item_type = 'technique' "
+                "AND technique_id IS NOT NULL "
+                "AND combination_id IS NULL)"
+            " OR "
+            "(item_type = 'combination' "
+                "AND technique_id IS NULL "
+                "AND combination_id IS NOT NULL)"
+        "),"
+
+        "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,"
+        "FOREIGN KEY (user_id, drill_id) "
+        "REFERENCES combat_sports_drills(user_id, id) "
+        "ON DELETE CASCADE,"
+        "FOREIGN KEY (user_id, technique_id) "
+        "REFERENCES combat_sports_techniques(user_id, id) "
+        "ON DELETE RESTRICT,"
+        "FOREIGN KEY (user_id, combination_id) "
+        "REFERENCES combat_sports_combinations(user_id, id) "
+        "ON DELETE RESTRICT"
+        ");"
+
+        // These indexes support the user-scoped list operations that will
+        // be implemented during Issue 2.2.
+        "CREATE INDEX IF NOT EXISTS "
+        "idx_combat_sports_techniques_user "
+        "ON combat_sports_techniques(user_id);"
+
+        "CREATE INDEX IF NOT EXISTS "
+        "idx_combat_sports_combinations_user "
+        "ON combat_sports_combinations(user_id);"
+
+        "CREATE INDEX IF NOT EXISTS "
+        "idx_combat_sports_combination_steps_combination "
+        "ON combat_sports_combination_steps(combination_id, step_order);"
+
+        "CREATE INDEX IF NOT EXISTS "
+        "idx_combat_sports_drills_user "
+        "ON combat_sports_drills(user_id);"
+
+        "CREATE INDEX IF NOT EXISTS "
+        "idx_combat_sports_drill_items_drill "
+        "ON combat_sports_drill_items(drill_id, item_order);";
+
+    // SQLite stores any schema error message in this pointer.
     char* errorMessage = nullptr;
 
-    // Execute all table-creation statements
+    // Execute all schema statements together.
     int result = sqlite3_exec(
         db,
         sql,
@@ -153,7 +286,7 @@ bool Database::initializeSchema() {
         &errorMessage
     );
 
-    // Stop initialization if any table could not be created
+    // Stop initialization if any table or index could not be created.
     if (result != SQLITE_OK) {
         cerr << "Database schema error: "
              << errorMessage
