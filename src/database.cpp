@@ -66,8 +66,8 @@ bool Database::connect() {
     // SQLITE_OK means the database opened successfully
     if (result != SQLITE_OK) {
         cerr << "Database connection error: "
-                  << sqlite3_errmsg(db)
-                  << endl;
+             << sqlite3_errmsg(db)
+             << endl;
 
         // Close the connection if SQLite partially opened the database
         disconnect();
@@ -75,7 +75,7 @@ bool Database::connect() {
         return false;
     }
 
-    // Enable foreign key enforcement for database connection
+    // Enable foreign key enforcement for the database connection
     int foreignKeyResult = sqlite3_exec(
         db,
         "PRAGMA foreign_keys = ON;",
@@ -85,7 +85,7 @@ bool Database::connect() {
     );
 
     // Check whether foreign key enforcement was enabled successfully
-    if (foreignKeyResult != SQLITE_OK)  {
+    if (foreignKeyResult != SQLITE_OK) {
         cerr << "Failed to enable foreign key enforcement: "
              << sqlite3_errmsg(db)
              << endl;
@@ -100,10 +100,11 @@ bool Database::connect() {
     return true;
 }
 
-// Creates the initial database tables if they do not already exist
+// Creates the required database tables if they do not already exist
 bool Database::initializeSchema() {
 
-    // SQL statement used to create tables
+    // All CREATE TABLE statements are executed together when the app starts.
+    // IF NOT EXISTS prevents SQLite from replacing tables that already exist.
     const char* sql =
         "CREATE TABLE IF NOT EXISTS users ("
         "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -121,15 +122,38 @@ bool Database::initializeSchema() {
         "created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
         "expires_at TEXT NOT NULL,"
         "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"
+        ");"
+
+        // Stores the general information for a completed combat-sports session.
+        // Detailed combinations, drills, and rounds will use related tables later.
+        "CREATE TABLE IF NOT EXISTS combat_sports_sessions ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "user_id INTEGER NOT NULL,"
+        "discipline TEXT NOT NULL,"
+        "training_type TEXT NOT NULL,"
+        "session_date TEXT NOT NULL,"
+        "duration_minutes INTEGER NOT NULL CHECK (duration_minutes > 0),"
+        "recording_method TEXT NOT NULL DEFAULT 'manual' "
+        "CHECK (recording_method IN ('manual', 'training_mode')),"
+        "notes TEXT,"
+        "created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"
         ");";
-        
-    // SQLite stores any error message from sqlite3_exec here
+
+    // SQLite stores any schema error message in this pointer
     char* errorMessage = nullptr;
 
-    // Execute the SQL statement
-    int result = sqlite3_exec(db, sql, nullptr, nullptr, &errorMessage);
+    // Execute all table-creation statements
+    int result = sqlite3_exec(
+        db,
+        sql,
+        nullptr,
+        nullptr,
+        &errorMessage
+    );
 
-    // Check whether the schema was created successfully
+    // Stop initialization if any table could not be created
     if (result != SQLITE_OK) {
         cerr << "Database schema error: "
              << errorMessage
@@ -156,7 +180,7 @@ void Database::disconnect() {
     }
 }
 
-// Creates new user and stores their username, email, and hashed password
+// Creates a new user and stores their username, email, and hashed password
 DatabaseResult Database::createUser(
     const string& username,
     const string& email,
@@ -189,9 +213,9 @@ DatabaseResult Database::createUser(
         !bindText(statement, 2, email) ||
         !bindText(statement, 3, passwordHash)) {
 
-            sqlite3_finalize(statement);
-            return DatabaseResult::Error;
-        }
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
 
     // Execute the prepared INSERT statement
     result = sqlite3_step(statement);
@@ -210,7 +234,7 @@ DatabaseResult Database::createUser(
 
         return DatabaseResult::Conflict;
     }
-   
+
     // Any other SQLite result represents an unexpected database error
     cerr << "Failed to create user: "
          << sqlite3_errmsg(db) << endl;
@@ -309,7 +333,7 @@ DatabaseResult Database::createSession(
     const char* sql =
         "INSERT INTO sessions (user_id, session_token, expires_at) "
         "VALUES (?, ?, ?);";
-    
+
     sqlite3_stmt* statement = nullptr;
 
     int result = sqlite3_prepare_v2(
@@ -337,7 +361,7 @@ DatabaseResult Database::createSession(
     if (result != SQLITE_OK) {
         cerr << "Failed to bind session user ID: "
              << sqlite3_errmsg(db) << endl;
-            
+
         sqlite3_finalize(statement);
         return DatabaseResult::Error;
     }
@@ -346,9 +370,9 @@ DatabaseResult Database::createSession(
     if (!bindText(statement, 2, sessionToken) ||
         !bindText(statement, 3, expiresAt)) {
 
-            sqlite3_finalize(statement);
-            return DatabaseResult::Error;
-        }
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
 
     // Execute the INSERT statement
     result = sqlite3_step(statement);
@@ -399,7 +423,7 @@ DatabaseResult Database::deleteSession(const string& sessionToken) {
     // Execute the DELETE statement
     result = sqlite3_step(statement);
 
-    if (result!= SQLITE_DONE) {
+    if (result != SQLITE_DONE) {
         cerr << "Failed to delete session: "
              << sqlite3_errmsg(db) << endl;
 
@@ -408,7 +432,7 @@ DatabaseResult Database::deleteSession(const string& sessionToken) {
         return DatabaseResult::Error;
     }
 
-    // Check matching session was deleted
+    // Check whether a matching session was deleted
     int deletedRows = sqlite3_changes(db);
 
     sqlite3_finalize(statement);
@@ -420,9 +444,9 @@ DatabaseResult Database::deleteSession(const string& sessionToken) {
     return DatabaseResult::Success;
 }
 
-// Check whether a session token belongs to a valid, unexpired session
+// Checks whether a session token belongs to a valid, unexpired session
 DatabaseResult Database::validateSession(
-    const std::string& sessionToken,
+    const string& sessionToken,
     int& userId
 ) {
     const char* sql =
@@ -444,13 +468,13 @@ DatabaseResult Database::validateSession(
 
     if (result != SQLITE_OK) {
         cerr << "Failed to prepare session validation statement: "
-             << sqlite3_errmsg(db) << endl;\
+             << sqlite3_errmsg(db) << endl;
 
         return DatabaseResult::Error;
     }
 
     // Bind the session token to the SQL placeholder
-    if(!bindText(statement, 1, sessionToken)) {
+    if (!bindText(statement, 1, sessionToken)) {
         sqlite3_finalize(statement);
 
         return DatabaseResult::Error;
@@ -471,7 +495,7 @@ DatabaseResult Database::validateSession(
     // SQLITE_DONE means no valid session was found
     if (result == SQLITE_DONE) {
         sqlite3_finalize(statement);
-        
+
         return DatabaseResult::NotFound;
     }
 
@@ -479,8 +503,7 @@ DatabaseResult Database::validateSession(
     cerr << "Failed to validate session: "
          << sqlite3_errmsg(db) << endl;
 
-         sqlite3_finalize(statement);
+    sqlite3_finalize(statement);
 
-         return DatabaseResult::Error;
+    return DatabaseResult::Error;
 }
-
