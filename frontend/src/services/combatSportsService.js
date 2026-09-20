@@ -6,7 +6,9 @@ async function handleApiResponse(response) {
         success: data.success,
         status: response.status,
         message: data.message || data.error,
-        session: data.session
+        session: data.session,
+        sessions: data.sessions,
+        count: data.count
     };
 }
 
@@ -38,6 +40,18 @@ export async function createCombatSportsSession({
                 recording_method: recordingMethod,
                 notes
             })
+        }
+    );
+
+    return handleApiResponse(response);
+}
+
+// Retrieves the authenticated user's combat-sports session history
+export async function getCombatSportsSessions() {
+    const response = await fetch(
+        "/api/combat-sports/sessions",
+        {
+            method: "GET"
         }
     );
 

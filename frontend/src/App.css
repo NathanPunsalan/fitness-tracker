@@ -42,14 +42,33 @@
     padding: var(--space-2xl);
 }
 
+/* Place session recording and history beside each other on wide screens. */
+.combat-sports-page {
+    display: grid;
+    grid-template-columns:
+        minmax(0, 5fr)
+        minmax(0, 7fr);
+    align-items: start;
+    gap: var(--space-lg);
+
+    width: 100%;
+    margin: var(--space-xl) auto;
+}
+
 .combat-sports-form-card {
     width: 100%;
-    max-width: 40rem;
-    margin: var(--space-xl) auto;
+    margin: 0;
     box-sizing: border-box;
 }
 
 .form-description {
     margin-bottom: var(--space-lg);
     color: var(--color-text-muted);
+}
+
+/* Stack both cards when the available width becomes too narrow. */
+@media (max-width: 64rem) {
+    .combat-sports-page {
+        grid-template-columns: 1fr;
+    }
 }
