@@ -114,7 +114,7 @@ public:
         std::vector<CombatSportsSession>& sessions
     );
 
-        // Updates a combat-sports session belonging to a specific user
+    // Updates a combat-sports session belonging to a specific user
     DatabaseResult updateCombatSportsSession(
         int sessionId,
         int userId,
@@ -126,7 +126,7 @@ public:
         const std::string& notes
     );
 
-        // Deletes a combat-sports session belonging to a specific user
+    // Deletes a combat-sports session belonging to a specific user
     DatabaseResult deleteCombatSportsSession(
         int sessionId,
         int userId

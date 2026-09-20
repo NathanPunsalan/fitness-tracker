@@ -55,3 +55,15 @@
     opacity: 0.6;
     cursor: not-allowed;
 }
+
+/* Destructive action button */
+.ui-button--danger {
+    color: var(--color-text);
+    background-color: transparent;
+    border-color: var(--color-error);
+}
+
+.ui-button--danger:hover:not(:disabled) {
+    color: var(--color-text);
+    background-color: var(--color-error);
+}

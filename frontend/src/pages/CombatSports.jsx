@@ -14,11 +14,10 @@ import TextAreaField from "../components/ui/TextAreaField";
 
 import {
     createCombatSportsSession,
-    getCombatSportsSessions
+    getCombatSportsSessions,
+    updateCombatSportsSession
 } from "../services/combatSportsService";
 
-// Suggested values help keep common entries consistent while still
-// allowing the user to enter a discipline or training type not listed.
 const disciplineSuggestions = [
     "Muay Thai",
     "Brazilian Jiu-Jitsu",
@@ -41,7 +40,7 @@ const trainingTypeSuggestions = [
     "Conditioning"
 ];
 
-// Produce today's date in the user's local timezone for the date input.
+// Produce today's date in the user's local timezone.
 function getTodayDate() {
     const today = new Date();
     const year = today.getFullYear();
@@ -51,8 +50,7 @@ function getTodayDate() {
     return `${year}-${month}-${day}`;
 }
 
-// Keep newly created sessions in the same newest-first order
-// used by the backend database query.
+// Keep sessions in the same newest-first order used by the backend.
 function sortSessionsNewestFirst(sessions) {
     return [...sessions].sort((firstSession, secondSession) => {
         const dateComparison =
@@ -71,7 +69,7 @@ function sortSessionsNewestFirst(sessions) {
 function CombatSports() {
     const today = getTodayDate();
 
-    // Store the current value of each session field.
+    // Store the current value of each form field.
     const [discipline, setDiscipline] = useState("");
     const [trainingType, setTrainingType] = useState("");
     const [sessionDate, setSessionDate] = useState(today);
@@ -80,20 +78,24 @@ function CombatSports() {
         useState("manual");
     const [notes, setNotes] = useState("");
 
-    // Store the text and visual type of the latest form message.
+    // A null ID means the form is creating a new session.
+    // A numeric ID means the form is editing that existing session.
+    const [editingSessionId, setEditingSessionId] =
+        useState(null);
+
+    // Store the latest form feedback.
     const [message, setMessage] = useState("");
     const [messageType, setMessageType] = useState("info");
 
-    // Track whether a session creation request is processing.
+    // Track whether a create or update request is processing.
     const [loading, setLoading] = useState(false);
 
-    // Store session history separately from the form state.
+    // Store session-history state separately from form state.
     const [sessions, setSessions] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(true);
     const [historyError, setHistoryError] = useState("");
 
-    // This ref changes immediately, preventing rapid duplicate submissions
-    // before React has time to apply the loading-state update.
+    // This ref changes immediately, preventing rapid duplicate submissions.
     const submissionInProgress = useRef(false);
 
     // Load the authenticated user's session history when the page opens.
@@ -104,8 +106,6 @@ function CombatSports() {
             try {
                 const result = await getCombatSportsSessions();
 
-                // Ignore the result if the page was removed while
-                // the request was still processing.
                 if (requestCancelled) {
                     return;
                 }
@@ -145,6 +145,58 @@ function CombatSports() {
         };
     }, []);
 
+    // Restore the form to its default create-session state.
+    function resetForm() {
+        setDiscipline("");
+        setTrainingType("");
+        setSessionDate(today);
+        setDurationMinutes("");
+        setRecordingMethod("manual");
+        setNotes("");
+        setEditingSessionId(null);
+    }
+
+    // Populate the form with an existing session and enter edit mode.
+    function beginEditingSession(session) {
+        setDiscipline(session.discipline);
+        setTrainingType(session.training_type);
+        setSessionDate(session.session_date);
+        setDurationMinutes(
+            String(session.duration_minutes)
+        );
+        setRecordingMethod(session.recording_method);
+        setNotes(session.notes || "");
+        setEditingSessionId(session.id);
+
+        // Clear feedback from an earlier create or update operation.
+        setMessage("");
+        setMessageType("info");
+    }
+
+    // Leave edit mode without changing the selected database record.
+    function cancelEditingSession() {
+        resetForm();
+        setMessage("");
+        setMessageType("info");
+    }
+
+    // Remove a successfully deleted session from the displayed history.
+    function handleSessionDeleted(sessionId) {
+        setSessions((currentSessions) =>
+            currentSessions.filter(
+                (session) => session.id !== sessionId
+            )
+        );
+
+        // If the deleted session was being edited, return the form
+        // to its normal create-session state.
+        if (editingSessionId === sessionId) {
+            resetForm();
+            setMessage("");
+            setMessageType("info");
+        }
+    }
+
     // Check values that require more validation than HTML attributes provide.
     function validateForm() {
         if (!discipline.trim()) {
@@ -182,11 +234,10 @@ function CombatSports() {
         return "";
     }
 
-    // Submit the completed session to the Crow API.
+    // Submit either a new session or edits to an existing session.
     async function handleSubmit(event) {
         event.preventDefault();
 
-        // Stop repeated clicks from creating duplicate sessions.
         if (submissionInProgress.current) {
             return;
         }
@@ -203,64 +254,124 @@ function CombatSports() {
         setMessage("");
         setLoading(true);
 
+        const sessionValues = {
+            discipline: discipline.trim(),
+            trainingType: trainingType.trim(),
+            sessionDate,
+            durationMinutes: Number(durationMinutes),
+            recordingMethod,
+            notes: notes.trim()
+        };
+
         try {
-            const result = await createCombatSportsSession({
-                discipline: discipline.trim(),
-                trainingType: trainingType.trim(),
-                sessionDate,
-                durationMinutes: Number(durationMinutes),
-                recordingMethod,
-                notes: notes.trim()
-            });
+            // Edit mode sends the complete form to the PUT route.
+            if (editingSessionId !== null) {
+                const result = await updateCombatSportsSession(
+                    editingSessionId,
+                    sessionValues
+                );
+
+                setMessageType(
+                    result.success ? "success" : "error"
+                );
+
+                if (!result.success) {
+                    setMessage(
+                        result.message ||
+                        "Unable to update the session."
+                    );
+                    return;
+                }
+
+                // Fall back to the submitted values if a successful
+                // response unexpectedly omits its session object.
+                const updatedSession = result.session || {
+                    id: editingSessionId,
+                    discipline: sessionValues.discipline,
+                    training_type: sessionValues.trainingType,
+                    session_date: sessionValues.sessionDate,
+                    duration_minutes:
+                        sessionValues.durationMinutes,
+                    recording_method:
+                        sessionValues.recordingMethod,
+                    notes: sessionValues.notes
+                };
+
+                // Preserve fields such as created_at while replacing
+                // the editable values returned by the PUT route.
+                setSessions((currentSessions) =>
+                    sortSessionsNewestFirst(
+                        currentSessions.map((session) =>
+                            session.id === editingSessionId
+                                ? {
+                                    ...session,
+                                    ...updatedSession
+                                }
+                                : session
+                        )
+                    )
+                );
+
+                setMessage(
+                    `${updatedSession.discipline} session updated successfully.`
+                );
+                setHistoryError("");
+                resetForm();
+                return;
+            }
+
+            // Create mode sends a new session to the POST route.
+            const result = await createCombatSportsSession(
+                sessionValues
+            );
 
             setMessageType(
                 result.success ? "success" : "error"
             );
 
-            if (result.success) {
-                const savedDiscipline =
-                    result.session?.discipline ||
-                    discipline.trim();
-
-                setMessage(
-                    `${savedDiscipline} session created successfully.`
-                );
-
-                // Add the new session to history immediately so the user
-                // does not need to reload the page or send another GET request.
-                if (result.session) {
-                    setSessions((currentSessions) =>
-                        sortSessionsNewestFirst([
-                            result.session,
-                            ...currentSessions
-                        ])
-                    );
-                    setHistoryError("");
-                }
-
-                // Clear session-specific values while keeping helpful defaults.
-                setDiscipline("");
-                setTrainingType("");
-                setSessionDate(today);
-                setDurationMinutes("");
-                setRecordingMethod("manual");
-                setNotes("");
-            } else {
+            if (!result.success) {
                 setMessage(
                     result.message ||
                     "Unable to record the session."
                 );
+                return;
             }
+
+            const savedDiscipline =
+                result.session?.discipline ||
+                sessionValues.discipline;
+
+            setMessage(
+                `${savedDiscipline} session created successfully.`
+            );
+
+            // Add the new session to history immediately.
+            if (result.session) {
+                setSessions((currentSessions) =>
+                    sortSessionsNewestFirst([
+                        result.session,
+                        ...currentSessions
+                    ])
+                );
+                setHistoryError("");
+            }
+
+            resetForm();
         } catch {
             setMessageType("error");
+
             setMessage(
-                "Unable to record the session. Please try again."
+                editingSessionId !== null
+                    ? "Unable to update the session. Please try again."
+                    : "Unable to record the session. Please try again."
             );
         } finally {
             submissionInProgress.current = false;
             setLoading(false);
         }
     }
+
+    const editing = editingSessionId !== null;
 
     return (
         <div className="combat-sports-page">
@@ -269,11 +380,16 @@ function CombatSports() {
                 className="combat-sports-form-card"
                 shadow
             >
-                <h1>Record Combat Sports Session</h1>
+                <h1>
+                    {editing
+                        ? "Edit Combat Sports Session"
+                        : "Record Combat Sports Session"}
+                </h1>
 
                 <p className="form-description">
-                    Add the general details from a completed
-                    training session.
+                    {editing
+                        ? "Update the details for the selected session."
+                        : "Add the general details from a completed training session."}
                 </p>
 
                 <form onSubmit={handleSubmit}>
@@ -382,13 +498,32 @@ function CombatSports() {
                         rows="5"
                     />
 
-                    <Button
-                        type="submit"
-                        loading={loading}
-                        loadingText="Saving session..."
-                    >
-                        Save Session
-                    </Button>
+                    <div className="combat-sports-form-actions">
+                        <Button
+                            type="submit"
+                            loading={loading}
+                            loadingText={
+                                editing
+                                    ? "Saving changes..."
+                                    : "Saving session..."
+                            }
+                        >
+                            {editing
+                                ? "Save Changes"
+                                : "Save Session"}
+                        </Button>
+
+                        {editing && (
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={cancelEditingSession}
+                                disabled={loading}
+                            >
+                                Cancel
+                            </Button>
+                        )}
+                    </div>
                 </form>
 
                 <FeedbackMessage type={messageType}>
@@ -400,6 +535,9 @@ function CombatSports() {
                 sessions={sessions}
                 loading={historyLoading}
                 error={historyError}
+                onEditSession={beginEditingSession}
+                onSessionDeleted={handleSessionDeleted}
+                editingSessionId={editingSessionId}
             />
         </div>
     );

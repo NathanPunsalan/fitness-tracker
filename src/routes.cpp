@@ -752,6 +752,291 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
         return response;
     });
 
+    // Updates a combat-sports session belonging to the authenticated user
+    CROW_ROUTE(app, "/api/combat-sports/sessions/<int>")
+    .methods(crow::HTTPMethod::PUT)
+    ([&database](
+        const crow::request& request,
+        int sessionId
+    ) {
+        int userId;
+        string authenticationError;
+
+        // Authenticate the request and retrieve the current user's ID
+        AuthenticationResult authenticationResult = authenticateRequest(
+            request,
+            database,
+            userId,
+            authenticationError
+        );
+
+        if (authenticationResult == AuthenticationResult::Unauthorized) {
+            return createJsonErrorResponse(
+                401,
+                authenticationError
+            );
+        }
+
+        if (authenticationResult == AuthenticationResult::Error) {
+            return createJsonErrorResponse(
+                500,
+                authenticationError
+            );
+        }
+
+        // Route parameters should identify a valid database record
+        if (sessionId <= 0) {
+            return createJsonErrorResponse(
+                400,
+                "Session ID must be greater than zero."
+            );
+        }
+
+        // Parse the complete set of updated session information
+        auto body = crow::json::load(request.body);
+
+        if (!body) {
+            return createJsonErrorResponse(
+                400,
+                "Invalid combat-sports session data."
+            );
+        }
+
+        // PUT replaces all editable values, so every required field
+        // must be included in the request.
+        if (!body.has("discipline") ||
+            !body.has("training_type") ||
+            !body.has("session_date") ||
+            !body.has("duration_minutes") ||
+            !body.has("recording_method")) {
+
+            return createJsonErrorResponse(
+                400,
+                "Discipline, training type, session date, duration, and recording method are required."
+            );
+        }
+
+        // Required text fields must contain JSON string values
+        if (body["discipline"].t() != crow::json::type::String ||
+            body["training_type"].t() != crow::json::type::String ||
+            body["session_date"].t() != crow::json::type::String ||
+            body["recording_method"].t() != crow::json::type::String) {
+
+            return createJsonErrorResponse(
+                400,
+                "Discipline, training type, session date, and recording method must be text values."
+            );
+        }
+
+        // Duration must be provided as a JSON number
+        if (body["duration_minutes"].t() != crow::json::type::Number) {
+            return createJsonErrorResponse(
+                400,
+                "Duration must be a number of minutes."
+            );
+        }
+
+        // Notes are optional, but they must be text when provided
+        if (body.has("notes") &&
+            body["notes"].t() != crow::json::type::String) {
+
+            return createJsonErrorResponse(
+                400,
+                "Notes must be a text value."
+            );
+        }
+
+        // Read the validated JSON fields
+        string discipline = body["discipline"].s();
+        string trainingType = body["training_type"].s();
+        string sessionDate = body["session_date"].s();
+        int durationMinutes = body["duration_minutes"].i();
+        string recordingMethod = body["recording_method"].s();
+
+        // Use an empty string when optional notes were not submitted
+        string notes = "";
+
+        if (body.has("notes")) {
+            notes = body["notes"].s();
+        }
+
+        // Reject required text fields containing no meaningful characters
+        if (isBlank(discipline) ||
+            isBlank(trainingType) ||
+            isBlank(sessionDate) ||
+            isBlank(recordingMethod)) {
+
+            return createJsonErrorResponse(
+                400,
+                "Required session fields cannot be empty."
+            );
+        }
+
+        if (durationMinutes <= 0) {
+            return createJsonErrorResponse(
+                400,
+                "Duration must be greater than zero minutes."
+            );
+        }
+
+        // These values match the recording_method database constraint
+        if (recordingMethod != "manual" &&
+            recordingMethod != "training_mode") {
+
+            return createJsonErrorResponse(
+                400,
+                "Recording method must be manual or training_mode."
+            );
+        }
+
+        // The database checks both IDs so users can update only
+        // combat-sports sessions that belong to them.
+        DatabaseResult result = database.updateCombatSportsSession(
+            sessionId,
+            userId,
+            discipline,
+            trainingType,
+            sessionDate,
+            durationMinutes,
+            recordingMethod,
+            notes
+        );
+
+        // A missing session and another user's session both return 404
+        if (result == DatabaseResult::NotFound) {
+            return createJsonErrorResponse(
+                404,
+                "Combat-sports session not found."
+            );
+        }
+
+        if (result == DatabaseResult::Conflict) {
+            return createJsonErrorResponse(
+                400,
+                "The session contains unsupported values."
+            );
+        }
+
+        if (result == DatabaseResult::Error) {
+            return createJsonErrorResponse(
+                500,
+                "Unable to update combat-sports session."
+            );
+        }
+
+        // Return the updated values so the frontend can replace its
+        // existing history entry without requesting the full history again.
+        crow::json::wvalue responseBody;
+
+        responseBody["success"] = true;
+        responseBody["message"] =
+            "Combat-sports session updated successfully.";
+
+        responseBody["session"]["id"] = sessionId;
+        responseBody["session"]["discipline"] = discipline;
+        responseBody["session"]["training_type"] = trainingType;
+        responseBody["session"]["session_date"] = sessionDate;
+        responseBody["session"]["duration_minutes"] = durationMinutes;
+        responseBody["session"]["recording_method"] = recordingMethod;
+        responseBody["session"]["notes"] = notes;
+
+        crow::response response(
+            200,
+            responseBody
+        );
+
+        response.add_header(
+            "Content-Type",
+            "application/json"
+        );
+
+        return response;
+    });
+
+    // Deletes a combat-sports session belonging to the authenticated user
+    CROW_ROUTE(app, "/api/combat-sports/sessions/<int>")
+    .methods(crow::HTTPMethod::Delete)
+    ([&database](
+        const crow::request& request,
+        int sessionId
+    ) {
+        int userId;
+        string authenticationError;
+
+        // Authenticate the request and retrieve the current user's ID
+        AuthenticationResult authenticationResult = authenticateRequest(
+            request,
+            database,
+            userId,
+            authenticationError
+        );
+
+        if (authenticationResult == AuthenticationResult::Unauthorized) {
+            return createJsonErrorResponse(
+                401,
+                authenticationError
+            );
+        }
+
+        if (authenticationResult == AuthenticationResult::Error) {
+            return createJsonErrorResponse(
+                500,
+                authenticationError
+            );
+        }
+
+        // Route parameters should identify a valid database record
+        if (sessionId <= 0) {
+            return createJsonErrorResponse(
+                400,
+                "Session ID must be greater than zero."
+            );
+        }
+
+        // The database checks both IDs so users can delete only
+        // combat-sports sessions that belong to them.
+        DatabaseResult result = database.deleteCombatSportsSession(
+            sessionId,
+            userId
+        );
+
+        // A missing session and another user's session both return 404
+        if (result == DatabaseResult::NotFound) {
+            return createJsonErrorResponse(
+                404,
+                "Combat-sports session not found."
+            );
+        }
+
+        if (result == DatabaseResult::Error) {
+            return createJsonErrorResponse(
+                500,
+                "Unable to delete combat-sports session."
+            );
+        }
+
+        // Return the deleted ID so the frontend can remove the
+        // matching entry without requesting the full history again.
+        crow::json::wvalue responseBody;
+
+        responseBody["success"] = true;
+        responseBody["message"] =
+            "Combat-sports session deleted successfully.";
+        responseBody["deleted_session_id"] = sessionId;
+
+        crow::response response(
+            200,
+            responseBody
+        );
+
+        response.add_header(
+            "Content-Type",
+            "application/json"
+        );
+
+        return response;
+    });
+
     // Retrieves all combat-sports sessions belonging to the authenticated user
     CROW_ROUTE(app, "/api/combat-sports/sessions")
     .methods(crow::HTTPMethod::GET)

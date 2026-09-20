@@ -1,3 +1,13 @@
+import {
+    useRef,
+    useState
+} from "react";
+
+import {
+    deleteCombatSportsSession
+} from "../../services/combatSportsService";
+
+import Button from "../ui/Button";
 import Card from "../ui/Card";
 import FeedbackMessage from "../ui/FeedbackMessage";
 import LoadingIndicator from "../ui/LoadingIndicator";
@@ -5,7 +15,6 @@ import LoadingIndicator from "../ui/LoadingIndicator";
 import "./CombatSportsSessionHistory.css";
 
 // Convert the stored YYYY-MM-DD value into a readable local date.
-// Splitting the date manually avoids timezone changes shifting the day.
 function formatSessionDate(sessionDate) {
     const [year, month, day] = sessionDate
         .split("-")
@@ -23,7 +32,7 @@ function formatSessionDate(sessionDate) {
     );
 }
 
-// Convert database values such as "training_mode" into readable text.
+// Convert database values into readable labels.
 function formatRecordingMethod(recordingMethod) {
     if (recordingMethod === "training_mode") {
         return "Training Mode";
@@ -35,8 +44,89 @@ function formatRecordingMethod(recordingMethod) {
 function CombatSportsSessionHistory({
     sessions,
     loading,
-    error
+    error,
+    onEditSession,
+    onSessionDeleted,
+    editingSessionId
 }) {
+    // Track which session is awaiting deletion confirmation.
+    const [confirmingDeleteId, setConfirmingDeleteId] =
+        useState(null);
+
+    // Track the session currently being deleted.
+    const [deletingSessionId, setDeletingSessionId] =
+        useState(null);
+
+    // Display feedback for delete operations inside the history card.
+    const [deleteMessage, setDeleteMessage] = useState("");
+    const [deleteMessageType, setDeleteMessageType] =
+        useState("info");
+
+    // Prevent rapid clicks from sending duplicate DELETE requests.
+    const deletionInProgress = useRef(false);
+
+    function beginDeleteConfirmation(sessionId) {
+        setConfirmingDeleteId(sessionId);
+        setDeleteMessage("");
+        setDeleteMessageType("info");
+    }
+
+    function cancelDeleteConfirmation() {
+        if (deletionInProgress.current) {
+            return;
+        }
+
+        setConfirmingDeleteId(null);
+    }
+
+    async function confirmDeleteSession(session) {
+        if (
+            deletionInProgress.current ||
+            !onSessionDeleted
+        ) {
+            return;
+        }
+
+        deletionInProgress.current = true;
+        setDeletingSessionId(session.id);
+        setDeleteMessage("");
+
+        try {
+            const result = await deleteCombatSportsSession(
+                session.id
+            );
+
+            setDeleteMessageType(
+                result.success ? "success" : "error"
+            );
+
+            if (!result.success) {
+                setDeleteMessage(
+                    result.message ||
+                    "Unable to delete the session."
+                );
+                return;
+            }
+
+            // Tell the parent page to remove the deleted entry
+            // from its session-history state.
+            onSessionDeleted(session.id);
+
+            setDeleteMessage(
+                `${session.discipline} session deleted successfully.`
+            );
+            setConfirmingDeleteId(null);
+        } catch {
+            setDeleteMessageType("error");
+            setDeleteMessage(
+                "Unable to delete the session. Please try again."
+            );
+        } finally {
+            deletionInProgress.current = false;
+            setDeletingSessionId(null);
+        }
+    }
+
     return (
         <Card
             as="section"
@@ -59,6 +149,10 @@ function CombatSportsSessionHistory({
                     </span>
                 )}
             </div>
+
+            <FeedbackMessage type={deleteMessageType}>
+                {deleteMessage}
+            </FeedbackMessage>
 
             {loading && (
                 <div className="combat-sports-history-card__loading">
@@ -89,52 +183,149 @@ function CombatSportsSessionHistory({
                 !error &&
                 sessions.length > 0 && (
                     <div className="combat-sports-session-list">
-                        {sessions.map((session) => (
-                            <article
-                                className="combat-sports-session"
-                                key={session.id}
-                            >
-                                <div className="combat-sports-session__header">
-                                    <div>
-                                        <h3>{session.discipline}</h3>
+                        {sessions.map((session) => {
+                            const isEditing =
+                                editingSessionId === session.id;
 
-                                        <span className="combat-sports-session__type">
-                                            {session.training_type}
-                                        </span>
-                                    </div>
+                            const isConfirmingDelete =
+                                confirmingDeleteId === session.id;
 
-                                    <time dateTime={session.session_date}>
-                                        {formatSessionDate(
-                                            session.session_date
-                                        )}
-                                    </time>
-                                </div>
+                            const isDeleting =
+                                deletingSessionId === session.id;
 
-                                <dl className="combat-sports-session__details">
-                                    <div>
-                                        <dt>Duration</dt>
-                                        <dd>
-                                            {session.duration_minutes} minutes
-                                        </dd>
-                                    </div>
+                            const sessionClasses = [
+                                "combat-sports-session",
+                                isEditing &&
+                                    "combat-sports-session--editing"
+                            ]
+                                .filter(Boolean)
+                                .join(" ");
 
-                                    <div>
-                                        <dt>Recorded With</dt>
-                                        <dd>
-                                            {formatRecordingMethod(
-                                                session.recording_method
+                            return (
+                                <article
+                                    className={sessionClasses}
+                                    key={session.id}
+                                >
+                                    <div className="combat-sports-session__header">
+                                        <div>
+                                            <h3>{session.discipline}</h3>
+
+                                            <span className="combat-sports-session__type">
+                                                {session.training_type}
+                                            </span>
+                                        </div>
+
+                                        <time dateTime={session.session_date}>
+                                            {formatSessionDate(
+                                                session.session_date
                                             )}
-                                        </dd>
+                                        </time>
                                     </div>
-                                </dl>
 
-                                {session.notes && (
-                                    <p className="combat-sports-session__notes">
-                                        {session.notes}
-                                    </p>
-                                )}
-                            </article>
-                        ))}
+                                    <dl className="combat-sports-session__details">
+                                        <div>
+                                            <dt>Duration</dt>
+                                            <dd>
+                                                {session.duration_minutes}{" "}
+                                                minutes
+                                            </dd>
+                                        </div>
+
+                                        <div>
+                                            <dt>Recorded With</dt>
+                                            <dd>
+                                                {formatRecordingMethod(
+                                                    session.recording_method
+                                                )}
+                                            </dd>
+                                        </div>
+                                    </dl>
+
+                                    {session.notes && (
+                                        <p className="combat-sports-session__notes">
+                                            {session.notes}
+                                        </p>
+                                    )}
+
+                                    {isConfirmingDelete ? (
+                                        <div
+                                            className="combat-sports-session__confirmation"
+                                            role="alertdialog"
+                                            aria-labelledby={
+                                                `delete-session-${session.id}`
+                                            }
+                                        >
+                                            <p
+                                                id={
+                                                    `delete-session-${session.id}`
+                                                }
+                                            >
+                                                Delete this{" "}
+                                                {session.discipline} session?
+                                            </p>
+
+                                            <div className="combat-sports-session__confirmation-actions">
+                                                <Button
+                                                    variant="danger"
+                                                    onClick={() =>
+                                                        confirmDeleteSession(
+                                                            session
+                                                        )
+                                                    }
+                                                    loading={isDeleting}
+                                                    loadingText="Deleting..."
+                                                >
+                                                    Confirm Delete
+                                                </Button>
+
+                                                <Button
+                                                    variant="secondary"
+                                                    onClick={
+                                                        cancelDeleteConfirmation
+                                                    }
+                                                    disabled={isDeleting}
+                                                >
+                                                    Cancel
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="combat-sports-session__actions">
+                                            <Button
+                                                variant="secondary"
+                                                onClick={() =>
+                                                    onEditSession(session)
+                                                }
+                                                disabled={
+                                                    !onEditSession ||
+                                                    isEditing ||
+                                                    deletingSessionId !== null
+                                                }
+                                            >
+                                                {isEditing
+                                                    ? "Editing"
+                                                    : "Edit"}
+                                            </Button>
+
+                                            <Button
+                                                variant="danger"
+                                                onClick={() =>
+                                                    beginDeleteConfirmation(
+                                                        session.id
+                                                    )
+                                                }
+                                                disabled={
+                                                    !onSessionDeleted ||
+                                                    deletingSessionId !== null
+                                                }
+                                            >
+                                                Delete
+                                            </Button>
+                                        </div>
+                                    )}
+                                </article>
+                            );
+                        })}
                     </div>
                 )}
         </Card>

@@ -8,11 +8,12 @@ async function handleApiResponse(response) {
         message: data.message || data.error,
         session: data.session,
         sessions: data.sessions,
-        count: data.count
+        count: data.count,
+        deletedSessionId: data.deleted_session_id
     };
 }
 
-// Sends a completed combat-sports session to the backend
+// Creates a completed combat-sports session
 export async function createCombatSportsSession({
     discipline,
     trainingType,
@@ -30,8 +31,6 @@ export async function createCombatSportsSession({
                 "Content-Type": "application/json"
             },
 
-            // Convert the React field names into the snake_case
-            // property names expected by the Crow API.
             body: JSON.stringify({
                 discipline,
                 training_type: trainingType,
@@ -52,6 +51,55 @@ export async function getCombatSportsSessions() {
         "/api/combat-sports/sessions",
         {
             method: "GET"
+        }
+    );
+
+    return handleApiResponse(response);
+}
+
+// Updates a combat-sports session belonging to the authenticated user
+export async function updateCombatSportsSession(
+    sessionId,
+    {
+        discipline,
+        trainingType,
+        sessionDate,
+        durationMinutes,
+        recordingMethod,
+        notes
+    }
+) {
+    const response = await fetch(
+        `/api/combat-sports/sessions/${sessionId}`,
+        {
+            method: "PUT",
+
+            headers: {
+                "Content-Type": "application/json"
+            },
+
+            // Convert React field names into the snake_case names
+            // expected by the Crow update route.
+            body: JSON.stringify({
+                discipline,
+                training_type: trainingType,
+                session_date: sessionDate,
+                duration_minutes: durationMinutes,
+                recording_method: recordingMethod,
+                notes
+            })
+        }
+    );
+
+    return handleApiResponse(response);
+}
+
+// Deletes a combat-sports session belonging to the authenticated user
+export async function deleteCombatSportsSession(sessionId) {
+    const response = await fetch(
+        `/api/combat-sports/sessions/${sessionId}`,
+        {
+            method: "DELETE"
         }
     );
 

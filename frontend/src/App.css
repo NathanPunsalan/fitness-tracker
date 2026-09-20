@@ -72,3 +72,9 @@
         grid-template-columns: 1fr;
     }
 }
+
+.combat-sports-form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+}
