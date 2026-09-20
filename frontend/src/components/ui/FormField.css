@@ -49,3 +49,9 @@
     opacity: 0.6;
     cursor: not-allowed;
 }
+
+/* Allow multiline fields to grow vertically without changing width. */
+.ui-form-field__textarea {
+    min-height: 7rem;
+    resize: vertical;
+}

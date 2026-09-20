@@ -15,7 +15,9 @@ function Navbar() {
         <nav className="navbar">
             <NavLink
                 to="/"
-                className={({ isActive }) => isActive ? "active" : ""}
+                className={({ isActive }) =>
+                    isActive ? "active" : ""
+                }
             >
                 Dashboard
             </NavLink>
@@ -24,28 +26,45 @@ function Navbar() {
                 <>
                     <NavLink
                         to="/lifting"
-                        className={({ isActive }) => isActive ? "active" : ""}
+                        className={({ isActive }) =>
+                            isActive ? "active" : ""
+                        }
                     >
                         Lifting
                     </NavLink>
 
                     <NavLink
                         to="/running"
-                        className={({ isActive }) => isActive ? "active" : ""}
+                        className={({ isActive }) =>
+                            isActive ? "active" : ""
+                        }
                     >
                         Running
                     </NavLink>
 
                     <NavLink
                         to="/nutrition"
-                        className={({ isActive }) => isActive ? "active" : ""}
+                        className={({ isActive }) =>
+                            isActive ? "active" : ""
+                        }
                     >
                         Nutrition
                     </NavLink>
 
                     <NavLink
+                        to="/combat-sports"
+                        className={({ isActive }) =>
+                            isActive ? "active" : ""
+                        }
+                    >
+                        Combat Sports
+                    </NavLink>
+
+                    <NavLink
                         to="/account"
-                        className={({ isActive }) => isActive ? "active" : ""}
+                        className={({ isActive }) =>
+                            isActive ? "active" : ""
+                        }
                     >
                         Account
                     </NavLink>
@@ -54,14 +73,18 @@ function Navbar() {
                 <>
                     <NavLink
                         to="/login"
-                        className={({ isActive }) => isActive ? "active" : ""}
+                        className={({ isActive }) =>
+                            isActive ? "active" : ""
+                        }
                     >
                         Login
                     </NavLink>
 
                     <NavLink
                         to="/register"
-                        className={({ isActive }) => isActive ? "active" : ""}
+                        className={({ isActive }) =>
+                            isActive ? "active" : ""
+                        }
                     >
                         Register
                     </NavLink>

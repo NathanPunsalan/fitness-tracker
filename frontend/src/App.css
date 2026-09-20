@@ -41,3 +41,15 @@
     justify-content: center;
     padding: var(--space-2xl);
 }
+
+.combat-sports-form-card {
+    width: 100%;
+    max-width: 40rem;
+    margin: var(--space-xl) auto;
+    box-sizing: border-box;
+}
+
+.form-description {
+    margin-bottom: var(--space-lg);
+    color: var(--color-text-muted);
+}

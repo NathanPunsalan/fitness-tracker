@@ -6,6 +6,7 @@ import Register from "./pages/Register";
 import Lifting from "./pages/Lifting";
 import Running from "./pages/Running";
 import Nutrition from "./pages/Nutrition";
+import CombatSports from "./pages/CombatSports";
 import Account from "./pages/Account";
 
 import Layout from "./components/Layout";
@@ -59,6 +60,15 @@ function App() {
                             element={
                                 <ProtectedRoute>
                                     <Nutrition />
+                                </ProtectedRoute>
+                            }
+                        />
+
+                        <Route
+                            path="/combat-sports"
+                            element={
+                                <ProtectedRoute>
+                                    <CombatSports />
                                 </ProtectedRoute>
                             }
                         />
