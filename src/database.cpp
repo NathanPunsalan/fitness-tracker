@@ -507,3 +507,448 @@ DatabaseResult Database::validateSession(
 
     return DatabaseResult::Error;
 }
+
+// Creates a completed combat-sports training session for a user
+DatabaseResult Database::createCombatSportsSession(
+    int userId,
+    const string& discipline,
+    const string& trainingType,
+    const string& sessionDate,
+    int durationMinutes,
+    const string& recordingMethod,
+    const string& notes,
+    int& sessionId
+) {
+    const char* sql =
+        "INSERT INTO combat_sports_sessions ("
+        "user_id, discipline, training_type, session_date, "
+        "duration_minutes, recording_method, notes"
+        ") VALUES (?, ?, ?, ?, ?, ?, ?);";
+
+    sqlite3_stmt* statement = nullptr;
+
+    // Convert the SQL text into a prepared statement
+    int result = sqlite3_prepare_v2(
+        db,
+        sql,
+        -1,
+        &statement,
+        nullptr
+    );
+
+    // Stop if SQLite could not prepare the INSERT statement
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare combat sports session insert statement: "
+             << sqlite3_errmsg(db) << endl;
+
+        return DatabaseResult::Error;
+    }
+
+    // Bind the user ID to the first SQL placeholder
+    result = sqlite3_bind_int(
+        statement,
+        1,
+        userId
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combat sports session user ID: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    // Bind the text values that appear before the duration
+    if (!bindText(statement, 2, discipline) ||
+        !bindText(statement, 3, trainingType) ||
+        !bindText(statement, 4, sessionDate)) {
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    // Bind the session duration to the fifth SQL placeholder
+    result = sqlite3_bind_int(
+        statement,
+        5,
+        durationMinutes
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combat sports session duration: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    // Bind the remaining session information
+    if (!bindText(statement, 6, recordingMethod) ||
+        !bindText(statement, 7, notes)) {
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    // Execute the prepared INSERT statement
+    result = sqlite3_step(statement);
+
+    sqlite3_finalize(statement);
+
+    // Store the automatically generated ID after a successful insert
+    if (result == SQLITE_DONE) {
+        sessionId = static_cast<int>(
+            sqlite3_last_insert_rowid(db)
+        );
+
+        return DatabaseResult::Success;
+    }
+
+    // A foreign-key or CHECK constraint was violated
+    if (result == SQLITE_CONSTRAINT) {
+        cerr << "Combat sports session creation conflict: "
+             << sqlite3_errmsg(db) << endl;
+
+        return DatabaseResult::Conflict;
+    }
+
+    // Any other result represents an unexpected database error
+    cerr << "Failed to create combat sports session: "
+         << sqlite3_errmsg(db) << endl;
+
+    return DatabaseResult::Error;
+}
+
+// Retrieves all combat-sports sessions belonging to a user
+DatabaseResult Database::getCombatSportsSessions(
+    int userId,
+    vector<CombatSportsSession>& sessions
+) {
+    const char* sql =
+        "SELECT "
+        "id, user_id, discipline, training_type, session_date, "
+        "duration_minutes, recording_method, notes, created_at, updated_at "
+        "FROM combat_sports_sessions "
+        "WHERE user_id = ? "
+        "ORDER BY session_date DESC, id DESC;";
+
+    sqlite3_stmt* statement = nullptr;
+
+    // Remove any old values before loading the latest database results
+    sessions.clear();
+
+    // Convert the SQL query into a prepared statement
+    int result = sqlite3_prepare_v2(
+        db,
+        sql,
+        -1,
+        &statement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare combat sports session lookup statement: "
+             << sqlite3_errmsg(db) << endl;
+
+        return DatabaseResult::Error;
+    }
+
+    // Only retrieve sessions belonging to the requested user
+    result = sqlite3_bind_int(
+        statement,
+        1,
+        userId
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combat sports session user ID: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    // Continue reading rows until SQLite reports that the query is finished
+    while ((result = sqlite3_step(statement)) == SQLITE_ROW) {
+        CombatSportsSession session;
+
+        // Retrieve the integer values from the current database row
+        session.id = sqlite3_column_int(statement, 0);
+        session.userId = sqlite3_column_int(statement, 1);
+        session.durationMinutes = sqlite3_column_int(statement, 5);
+
+        // Retrieve the required text values from the current database row
+        session.discipline = reinterpret_cast<const char*>(
+            sqlite3_column_text(statement, 2)
+        );
+
+        session.trainingType = reinterpret_cast<const char*>(
+            sqlite3_column_text(statement, 3)
+        );
+
+        session.sessionDate = reinterpret_cast<const char*>(
+            sqlite3_column_text(statement, 4)
+        );
+
+        session.recordingMethod = reinterpret_cast<const char*>(
+            sqlite3_column_text(statement, 6)
+        );
+
+        // Notes may be NULL because the database column is optional
+        const unsigned char* storedNotes =
+            sqlite3_column_text(statement, 7);
+
+        if (storedNotes != nullptr) {
+            session.notes =
+                reinterpret_cast<const char*>(storedNotes);
+        }
+        else {
+            session.notes = "";
+        }
+
+        session.createdAt = reinterpret_cast<const char*>(
+            sqlite3_column_text(statement, 8)
+        );
+
+        session.updatedAt = reinterpret_cast<const char*>(
+            sqlite3_column_text(statement, 9)
+        );
+
+        // Add the completed session object to the output vector
+        sessions.push_back(session);
+    }
+
+    // SQLITE_DONE means every matching row was read successfully
+    if (result == SQLITE_DONE) {
+        sqlite3_finalize(statement);
+
+        return DatabaseResult::Success;
+    }
+
+    // Any other result represents an unexpected database error
+    cerr << "Failed to retrieve combat sports sessions: "
+         << sqlite3_errmsg(db) << endl;
+
+    sqlite3_finalize(statement);
+
+    // Prevent partially loaded results from being used after an error
+    sessions.clear();
+
+    return DatabaseResult::Error;
+}
+
+// Updates a combat-sports session belonging to a specific user
+DatabaseResult Database::updateCombatSportsSession(
+    int sessionId,
+    int userId,
+    const string& discipline,
+    const string& trainingType,
+    const string& sessionDate,
+    int durationMinutes,
+    const string& recordingMethod,
+    const string& notes
+) {
+    const char* sql =
+        "UPDATE combat_sports_sessions "
+        "SET discipline = ?, "
+        "training_type = ?, "
+        "session_date = ?, "
+        "duration_minutes = ?, "
+        "recording_method = ?, "
+        "notes = ?, "
+        "updated_at = CURRENT_TIMESTAMP "
+        "WHERE id = ? AND user_id = ?;";
+
+    sqlite3_stmt* statement = nullptr;
+
+    // Convert the SQL text into a prepared statement
+    int result = sqlite3_prepare_v2(
+        db,
+        sql,
+        -1,
+        &statement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare combat sports session update statement: "
+             << sqlite3_errmsg(db) << endl;
+
+        return DatabaseResult::Error;
+    }
+
+    // Bind the text values that will replace the existing session values
+    if (!bindText(statement, 1, discipline) ||
+        !bindText(statement, 2, trainingType) ||
+        !bindText(statement, 3, sessionDate)) {
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    // Bind the updated session duration
+    result = sqlite3_bind_int(
+        statement,
+        4,
+        durationMinutes
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind updated combat sports session duration: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    // Bind the remaining updated session values
+    if (!bindText(statement, 5, recordingMethod) ||
+        !bindText(statement, 6, notes)) {
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    // Bind the session and user IDs used by the ownership check
+    result = sqlite3_bind_int(
+        statement,
+        7,
+        sessionId
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combat sports session ID: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_bind_int(
+        statement,
+        8,
+        userId
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combat sports session owner ID: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    // Execute the prepared UPDATE statement
+    result = sqlite3_step(statement);
+
+    if (result == SQLITE_DONE) {
+        // Check whether a session belonging to this user was updated
+        int updatedRows = sqlite3_changes(db);
+
+        sqlite3_finalize(statement);
+
+        if (updatedRows == 0) {
+            return DatabaseResult::NotFound;
+        }
+
+        return DatabaseResult::Success;
+    }
+
+    // A CHECK or foreign-key constraint was violated
+    if (result == SQLITE_CONSTRAINT) {
+        cerr << "Combat sports session update conflict: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Conflict;
+    }
+
+    // Any other result represents an unexpected database error
+    cerr << "Failed to update combat sports session: "
+         << sqlite3_errmsg(db) << endl;
+
+    sqlite3_finalize(statement);
+
+    return DatabaseResult::Error;
+}
+
+// Deletes a combat-sports session belonging to a specific user
+DatabaseResult Database::deleteCombatSportsSession(
+    int sessionId,
+    int userId
+) {
+    const char* sql =
+        "DELETE FROM combat_sports_sessions "
+        "WHERE id = ? AND user_id = ?;";
+
+    sqlite3_stmt* statement = nullptr;
+
+    // Convert the SQL text into a prepared statement
+    int result = sqlite3_prepare_v2(
+        db,
+        sql,
+        -1,
+        &statement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare combat sports session delete statement: "
+             << sqlite3_errmsg(db) << endl;
+
+        return DatabaseResult::Error;
+    }
+
+    // Bind the session ID identifying the record to delete
+    result = sqlite3_bind_int(
+        statement,
+        1,
+        sessionId
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combat sports session ID: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    // Bind the user ID to ensure the session belongs to that user
+    result = sqlite3_bind_int(
+        statement,
+        2,
+        userId
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combat sports session owner ID: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    // Execute the prepared DELETE statement
+    result = sqlite3_step(statement);
+
+    if (result != SQLITE_DONE) {
+        cerr << "Failed to delete combat sports session: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    // Check whether a session belonging to this user was deleted
+    int deletedRows = sqlite3_changes(db);
+
+    sqlite3_finalize(statement);
+
+    if (deletedRows == 0) {
+        return DatabaseResult::NotFound;
+    }
+
+    return DatabaseResult::Success;
+}
