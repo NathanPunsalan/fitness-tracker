@@ -20,7 +20,7 @@ int main()
     // Create the Crow web application
     crow::SimpleApp app;
 
-    // Register that application's routes with the Crow server
+    // Register the application's routes with the Crow server
     registerRoutes(app, database);
 
     cout << "Starting Fitness Tracker server..." << endl;
