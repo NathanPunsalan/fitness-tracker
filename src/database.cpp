@@ -40,8 +40,93 @@ bool Database::bindText(
     return true;
 }
 
+// Starts a write transaction for a multi-statement database operation
+bool Database::beginTransaction() {
+    char* errorMessage = nullptr;
+
+    // Reserve write access before beginning the multi-statement operation.
+    int result = sqlite3_exec(
+        db,
+        "BEGIN IMMEDIATE TRANSACTION;",
+        nullptr,
+        nullptr,
+        &errorMessage
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to begin database transaction: "
+             << (errorMessage != nullptr
+                ? errorMessage
+                : sqlite3_errmsg(db))
+             << endl;
+
+        if (errorMessage != nullptr) {
+            sqlite3_free(errorMessage);
+        }
+
+        return false;
+    }
+
+    return true;
+}
+
+// Permanently saves every statement in the active transaction
+bool Database::commitTransaction() {
+    char* errorMessage = nullptr;
+
+    int result = sqlite3_exec(
+        db,
+        "COMMIT;",
+        nullptr,
+        nullptr,
+        &errorMessage
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to commit database transaction: "
+             << (errorMessage != nullptr
+                ? errorMessage
+                : sqlite3_errmsg(db))
+             << endl;
+
+        if (errorMessage != nullptr) {
+            sqlite3_free(errorMessage);
+        }
+
+        return false;
+    }
+
+    return true;
+}
+
+// Reverses every statement in the active transaction after a failure
+void Database::rollbackTransaction() {
+    char* errorMessage = nullptr;
+
+    int result = sqlite3_exec(
+        db,
+        "ROLLBACK;",
+        nullptr,
+        nullptr,
+        &errorMessage
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to roll back database transaction: "
+             << (errorMessage != nullptr
+                ? errorMessage
+                : sqlite3_errmsg(db))
+             << endl;
+    }
+
+    if (errorMessage != nullptr) {
+        sqlite3_free(errorMessage);
+    }
+}
+
 // Initializes the database connection and required schema
 bool Database::initialize() {
+    lock_guard<recursive_mutex> lock(databaseMutex);
 
     // Open the SQLite database and enable foreign key enforcement
     if (!connect()) {
@@ -59,6 +144,7 @@ bool Database::initialize() {
 
 // Opens the SQLite database
 bool Database::connect() {
+    lock_guard<recursive_mutex> lock(databaseMutex);
 
     // sqlite3_open creates the database file if it does not already exist
     int result = sqlite3_open(databasePath.c_str(), &db);
@@ -102,6 +188,7 @@ bool Database::connect() {
 
 // Creates the required database tables if they do not already exist
 bool Database::initializeSchema() {
+    lock_guard<recursive_mutex> lock(databaseMutex);
 
     // All CREATE TABLE and CREATE INDEX statements are executed together
     // when the app starts. IF NOT EXISTS preserves existing user data.
@@ -304,6 +391,7 @@ bool Database::initializeSchema() {
 
 // Closes the SQLite database if a connection is currently open
 void Database::disconnect() {
+    lock_guard<recursive_mutex> lock(databaseMutex);
 
     if (db != nullptr) {
         sqlite3_close(db);
@@ -319,6 +407,8 @@ DatabaseResult Database::createUser(
     const string& email,
     const string& passwordHash
 ) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
     const char* sql =
         "INSERT INTO users (username, email, password_hash) "
         "VALUES (?, ?, ?);";
@@ -381,6 +471,8 @@ DatabaseResult Database::getUserLoginData(
     int& userId,
     string& passwordHash
 ) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
     // Search for a user whose username or email matches the submitted login value
     const char* sql =
         "SELECT id, password_hash "
@@ -463,6 +555,8 @@ DatabaseResult Database::createSession(
     const string& sessionToken,
     const string& expiresAt
 ) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
     const char* sql =
         "INSERT INTO sessions (user_id, session_token, expires_at) "
         "VALUES (?, ?, ?);";
@@ -524,6 +618,8 @@ DatabaseResult Database::createSession(
 
 // Deletes an authenticated session using its session token
 DatabaseResult Database::deleteSession(const string& sessionToken) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
     const char* sql =
         "DELETE FROM sessions "
         "WHERE session_token = ?;";
@@ -582,6 +678,8 @@ DatabaseResult Database::validateSession(
     const string& sessionToken,
     int& userId
 ) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
     const char* sql =
         "SELECT user_id "
         "FROM sessions "
@@ -652,6 +750,8 @@ DatabaseResult Database::createCombatSportsSession(
     const string& notes,
     int& sessionId
 ) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
     const char* sql =
         "INSERT INTO combat_sports_sessions ("
         "user_id, discipline, training_type, session_date, "
@@ -758,6 +858,8 @@ DatabaseResult Database::getCombatSportsSessions(
     int userId,
     vector<CombatSportsSession>& sessions
 ) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
     const char* sql =
         "SELECT "
         "id, user_id, discipline, training_type, session_date, "
@@ -882,6 +984,8 @@ DatabaseResult Database::updateCombatSportsSession(
     const string& recordingMethod,
     const string& notes
 ) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
     const char* sql =
         "UPDATE combat_sports_sessions "
         "SET discipline = ?, "
@@ -1011,6 +1115,8 @@ DatabaseResult Database::deleteCombatSportsSession(
     int sessionId,
     int userId
 ) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
     const char* sql =
         "DELETE FROM combat_sports_sessions "
         "WHERE id = ? AND user_id = ?;";
@@ -1085,3 +1191,2452 @@ DatabaseResult Database::deleteCombatSportsSession(
 
     return DatabaseResult::Success;
 }
+
+// Creates a reusable combat-sports technique for a specific user
+DatabaseResult Database::createCombatSportsTechnique(
+    int userId,
+    const string& discipline,
+    const string& name,
+    const string& category,
+    const string& description,
+    int& techniqueId
+) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
+    const char* sql =
+        "INSERT INTO combat_sports_techniques ("
+        "user_id, discipline, name, category, description"
+        ") VALUES (?, ?, ?, ?, ?);";
+
+    sqlite3_stmt* statement = nullptr;
+
+    // Convert the INSERT command into a prepared statement.
+    int result = sqlite3_prepare_v2(
+        db,
+        sql,
+        -1,
+        &statement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare combat sports technique insert statement: "
+             << sqlite3_errmsg(db) << endl;
+
+        return DatabaseResult::Error;
+    }
+
+    // Associate the new technique with its owning user.
+    result = sqlite3_bind_int(
+        statement,
+        1,
+        userId
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combat sports technique user ID: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    // Bind the technique information to the remaining placeholders.
+    if (!bindText(statement, 2, discipline) ||
+        !bindText(statement, 3, name) ||
+        !bindText(statement, 4, category) ||
+        !bindText(statement, 5, description)) {
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    // Execute the prepared INSERT statement.
+    result = sqlite3_step(statement);
+
+    sqlite3_finalize(statement);
+
+    if (result == SQLITE_DONE) {
+        // Save the generated ID so the caller can retrieve or return
+        // the newly created technique.
+        techniqueId = static_cast<int>(
+            sqlite3_last_insert_rowid(db)
+        );
+
+        return DatabaseResult::Success;
+    }
+
+    // This includes duplicate names within the same user and discipline,
+    // as well as invalid user foreign-key references.
+    if (result == SQLITE_CONSTRAINT) {
+        cerr << "Combat sports technique creation conflict: "
+             << sqlite3_errmsg(db) << endl;
+
+        return DatabaseResult::Conflict;
+    }
+
+    cerr << "Failed to create combat sports technique: "
+         << sqlite3_errmsg(db) << endl;
+
+    return DatabaseResult::Error;
+}
+
+// Retrieves one technique belonging to a specific user
+DatabaseResult Database::getCombatSportsTechnique(
+    int techniqueId,
+    int userId,
+    CombatSportsTechnique& technique
+) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
+    const char* sql =
+        "SELECT "
+        "id, user_id, discipline, name, category, description, "
+        "created_at, updated_at "
+        "FROM combat_sports_techniques "
+        "WHERE id = ? AND user_id = ?;";
+
+    sqlite3_stmt* statement = nullptr;
+
+    int result = sqlite3_prepare_v2(
+        db,
+        sql,
+        -1,
+        &statement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare combat sports technique lookup statement: "
+             << sqlite3_errmsg(db) << endl;
+
+        return DatabaseResult::Error;
+    }
+
+    // Bind both IDs so a user cannot retrieve another user's technique.
+    result = sqlite3_bind_int(
+        statement,
+        1,
+        techniqueId
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combat sports technique ID: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_bind_int(
+        statement,
+        2,
+        userId
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combat sports technique owner ID: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_step(statement);
+
+    if (result == SQLITE_ROW) {
+        technique.id = sqlite3_column_int(statement, 0);
+        technique.userId = sqlite3_column_int(statement, 1);
+
+        technique.discipline = reinterpret_cast<const char*>(
+            sqlite3_column_text(statement, 2)
+        );
+
+        technique.name = reinterpret_cast<const char*>(
+            sqlite3_column_text(statement, 3)
+        );
+
+        // Category and description are optional database columns.
+        const unsigned char* storedCategory =
+            sqlite3_column_text(statement, 4);
+
+        const unsigned char* storedDescription =
+            sqlite3_column_text(statement, 5);
+
+        technique.category = storedCategory != nullptr
+            ? reinterpret_cast<const char*>(storedCategory)
+            : "";
+
+        technique.description = storedDescription != nullptr
+            ? reinterpret_cast<const char*>(storedDescription)
+            : "";
+
+        technique.createdAt = reinterpret_cast<const char*>(
+            sqlite3_column_text(statement, 6)
+        );
+
+        technique.updatedAt = reinterpret_cast<const char*>(
+            sqlite3_column_text(statement, 7)
+        );
+
+        sqlite3_finalize(statement);
+
+        return DatabaseResult::Success;
+    }
+
+    if (result == SQLITE_DONE) {
+        sqlite3_finalize(statement);
+
+        return DatabaseResult::NotFound;
+    }
+
+    cerr << "Failed to retrieve combat sports technique: "
+         << sqlite3_errmsg(db) << endl;
+
+    sqlite3_finalize(statement);
+
+    return DatabaseResult::Error;
+}
+
+// Retrieves all techniques belonging to a specific user
+DatabaseResult Database::getCombatSportsTechniques(
+    int userId,
+    vector<CombatSportsTechnique>& techniques
+) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
+    const char* sql =
+        "SELECT "
+        "id, user_id, discipline, name, category, description, "
+        "created_at, updated_at "
+        "FROM combat_sports_techniques "
+        "WHERE user_id = ? "
+        "ORDER BY discipline ASC, name ASC, id ASC;";
+
+    sqlite3_stmt* statement = nullptr;
+
+    // Prevent older results from remaining in the output vector.
+    techniques.clear();
+
+    int result = sqlite3_prepare_v2(
+        db,
+        sql,
+        -1,
+        &statement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare combat sports techniques lookup statement: "
+             << sqlite3_errmsg(db) << endl;
+
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_bind_int(
+        statement,
+        1,
+        userId
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combat sports techniques owner ID: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    // Read each matching technique until the query is complete.
+    while ((result = sqlite3_step(statement)) == SQLITE_ROW) {
+        CombatSportsTechnique technique;
+
+        technique.id = sqlite3_column_int(statement, 0);
+        technique.userId = sqlite3_column_int(statement, 1);
+
+        technique.discipline = reinterpret_cast<const char*>(
+            sqlite3_column_text(statement, 2)
+        );
+
+        technique.name = reinterpret_cast<const char*>(
+            sqlite3_column_text(statement, 3)
+        );
+
+        const unsigned char* storedCategory =
+            sqlite3_column_text(statement, 4);
+
+        const unsigned char* storedDescription =
+            sqlite3_column_text(statement, 5);
+
+        technique.category = storedCategory != nullptr
+            ? reinterpret_cast<const char*>(storedCategory)
+            : "";
+
+        technique.description = storedDescription != nullptr
+            ? reinterpret_cast<const char*>(storedDescription)
+            : "";
+
+        technique.createdAt = reinterpret_cast<const char*>(
+            sqlite3_column_text(statement, 6)
+        );
+
+        technique.updatedAt = reinterpret_cast<const char*>(
+            sqlite3_column_text(statement, 7)
+        );
+
+        techniques.push_back(technique);
+    }
+
+    if (result == SQLITE_DONE) {
+        sqlite3_finalize(statement);
+
+        // An empty vector is still a successful retrieval.
+        return DatabaseResult::Success;
+    }
+
+    cerr << "Failed to retrieve combat sports techniques: "
+         << sqlite3_errmsg(db) << endl;
+
+    sqlite3_finalize(statement);
+
+    // Do not expose partially loaded results after a database error.
+    techniques.clear();
+
+    return DatabaseResult::Error;
+}
+
+// Updates a technique belonging to a specific user
+DatabaseResult Database::updateCombatSportsTechnique(
+    int techniqueId,
+    int userId,
+    const string& discipline,
+    const string& name,
+    const string& category,
+    const string& description
+) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
+    const char* sql =
+        "UPDATE combat_sports_techniques "
+        "SET discipline = ?, "
+        "name = ?, "
+        "category = ?, "
+        "description = ?, "
+        "updated_at = CURRENT_TIMESTAMP "
+        "WHERE id = ? AND user_id = ?;";
+
+    sqlite3_stmt* statement = nullptr;
+
+    int result = sqlite3_prepare_v2(
+        db,
+        sql,
+        -1,
+        &statement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare combat sports technique update statement: "
+             << sqlite3_errmsg(db) << endl;
+
+        return DatabaseResult::Error;
+    }
+
+    // Bind the replacement technique values.
+    if (!bindText(statement, 1, discipline) ||
+        !bindText(statement, 2, name) ||
+        !bindText(statement, 3, category) ||
+        !bindText(statement, 4, description)) {
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    // Restrict the update to the requested technique and its owner.
+    result = sqlite3_bind_int(
+        statement,
+        5,
+        techniqueId
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combat sports technique ID: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_bind_int(
+        statement,
+        6,
+        userId
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combat sports technique owner ID: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_step(statement);
+
+    if (result == SQLITE_DONE) {
+        int updatedRows = sqlite3_changes(db);
+
+        sqlite3_finalize(statement);
+
+        if (updatedRows == 0) {
+            return DatabaseResult::NotFound;
+        }
+
+        return DatabaseResult::Success;
+    }
+
+    // Duplicate names and other constraint failures are reported as
+    // conflicts instead of unexpected database errors.
+    if (result == SQLITE_CONSTRAINT) {
+        cerr << "Combat sports technique update conflict: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Conflict;
+    }
+
+    cerr << "Failed to update combat sports technique: "
+         << sqlite3_errmsg(db) << endl;
+
+    sqlite3_finalize(statement);
+
+    return DatabaseResult::Error;
+}
+
+// Deletes a technique belonging to a specific user
+DatabaseResult Database::deleteCombatSportsTechnique(
+    int techniqueId,
+    int userId
+) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
+    const char* sql =
+        "DELETE FROM combat_sports_techniques "
+        "WHERE id = ? AND user_id = ?;";
+
+    sqlite3_stmt* statement = nullptr;
+
+    int result = sqlite3_prepare_v2(
+        db,
+        sql,
+        -1,
+        &statement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare combat sports technique delete statement: "
+             << sqlite3_errmsg(db) << endl;
+
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_bind_int(
+        statement,
+        1,
+        techniqueId
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combat sports technique ID: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    // Including the user ID prevents one user from deleting another
+    // user's technique.
+    result = sqlite3_bind_int(
+        statement,
+        2,
+        userId
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combat sports technique owner ID: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_step(statement);
+
+    if (result == SQLITE_DONE) {
+        int deletedRows = sqlite3_changes(db);
+
+        sqlite3_finalize(statement);
+
+        if (deletedRows == 0) {
+            return DatabaseResult::NotFound;
+        }
+
+        return DatabaseResult::Success;
+    }
+
+    // A referenced technique is protected by the schema's
+    // ON DELETE RESTRICT foreign-key rules.
+    if (result == SQLITE_CONSTRAINT) {
+        cerr << "Combat sports technique deletion conflict: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Conflict;
+    }
+
+    cerr << "Failed to delete combat sports technique: "
+         << sqlite3_errmsg(db) << endl;
+
+    sqlite3_finalize(statement);
+
+    return DatabaseResult::Error;
+}
+
+// Creates a combination and its ordered technique steps as one transaction
+DatabaseResult Database::createCombatSportsCombination(
+    int userId,
+    const string& discipline,
+    const string& name,
+    const string& description,
+    const vector<int>& techniqueIds,
+    int& combinationId
+) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
+    // A combination must contain at least one technique.
+    if (techniqueIds.empty()) {
+        cerr << "Cannot create an empty combat sports combination."
+             << endl;
+
+        return DatabaseResult::Conflict;
+    }
+
+    if (!beginTransaction()) {
+        return DatabaseResult::Error;
+    }
+
+    const char* combinationSql =
+        "INSERT INTO combat_sports_combinations ("
+        "user_id, discipline, name, description"
+        ") VALUES (?, ?, ?, ?);";
+
+    sqlite3_stmt* combinationStatement = nullptr;
+
+    int result = sqlite3_prepare_v2(
+        db,
+        combinationSql,
+        -1,
+        &combinationStatement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare combat sports combination insert: "
+             << sqlite3_errmsg(db) << endl;
+
+        rollbackTransaction();
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_bind_int(
+        combinationStatement,
+        1,
+        userId
+    );
+
+    if (result != SQLITE_OK ||
+        !bindText(combinationStatement, 2, discipline) ||
+        !bindText(combinationStatement, 3, name) ||
+        !bindText(combinationStatement, 4, description)) {
+
+        sqlite3_finalize(combinationStatement);
+        rollbackTransaction();
+
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_step(combinationStatement);
+
+    sqlite3_finalize(combinationStatement);
+
+    if (result != SQLITE_DONE) {
+        DatabaseResult operationResult =
+            result == SQLITE_CONSTRAINT
+                ? DatabaseResult::Conflict
+                : DatabaseResult::Error;
+
+        cerr << "Failed to create combat sports combination: "
+             << sqlite3_errmsg(db) << endl;
+
+        rollbackTransaction();
+
+        return operationResult;
+    }
+
+    int newCombinationId = static_cast<int>(
+        sqlite3_last_insert_rowid(db)
+    );
+
+    // INSERT...SELECT only creates a step when the referenced technique
+    // belongs to the same user and discipline as the combination.
+    const char* stepSql =
+        "INSERT INTO combat_sports_combination_steps ("
+        "user_id, combination_id, technique_id, step_order"
+        ") "
+        "SELECT ?, ?, id, ? "
+        "FROM combat_sports_techniques "
+        "WHERE id = ? "
+        "AND user_id = ? "
+        "AND discipline = ?;";
+
+    sqlite3_stmt* stepStatement = nullptr;
+
+    result = sqlite3_prepare_v2(
+        db,
+        stepSql,
+        -1,
+        &stepStatement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare combination step insert: "
+             << sqlite3_errmsg(db) << endl;
+
+        rollbackTransaction();
+        return DatabaseResult::Error;
+    }
+
+    for (size_t index = 0; index < techniqueIds.size(); index++) {
+        // Reuse the same prepared statement for every ordered step.
+        sqlite3_reset(stepStatement);
+        sqlite3_clear_bindings(stepStatement);
+
+        int stepOrder = static_cast<int>(index) + 1;
+
+        result = sqlite3_bind_int(
+            stepStatement,
+            1,
+            userId
+        );
+
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_int(
+                stepStatement,
+                2,
+                newCombinationId
+            );
+        }
+
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_int(
+                stepStatement,
+                3,
+                stepOrder
+            );
+        }
+
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_int(
+                stepStatement,
+                4,
+                techniqueIds[index]
+            );
+        }
+
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_int(
+                stepStatement,
+                5,
+                userId
+            );
+        }
+
+        if (result != SQLITE_OK ||
+            !bindText(stepStatement, 6, discipline)) {
+
+            cerr << "Failed to bind combination step values: "
+                 << sqlite3_errmsg(db) << endl;
+
+            sqlite3_finalize(stepStatement);
+            rollbackTransaction();
+
+            return DatabaseResult::Error;
+        }
+
+        result = sqlite3_step(stepStatement);
+
+        if (result != SQLITE_DONE) {
+            DatabaseResult operationResult =
+                result == SQLITE_CONSTRAINT
+                    ? DatabaseResult::Conflict
+                    : DatabaseResult::Error;
+
+            cerr << "Failed to insert combination step: "
+                 << sqlite3_errmsg(db) << endl;
+
+            sqlite3_finalize(stepStatement);
+            rollbackTransaction();
+
+            return operationResult;
+        }
+
+        // Zero changes means INSERT...SELECT could not find a technique
+        // owned by this user with the required discipline.
+        if (sqlite3_changes(db) == 0) {
+            cerr << "Combination technique was not found or did not "
+                 << "match the combination discipline."
+                 << endl;
+
+            sqlite3_finalize(stepStatement);
+            rollbackTransaction();
+
+            return DatabaseResult::NotFound;
+        }
+    }
+
+    sqlite3_finalize(stepStatement);
+
+    if (!commitTransaction()) {
+        rollbackTransaction();
+        return DatabaseResult::Error;
+    }
+
+    // Only expose the generated ID after every step has committed.
+    combinationId = newCombinationId;
+
+    return DatabaseResult::Success;
+}
+
+// Retrieves one combination and its ordered technique steps
+DatabaseResult Database::getCombatSportsCombination(
+    int combinationId,
+    int userId,
+    CombatSportsCombination& combination
+) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
+    const char* combinationSql =
+        "SELECT "
+        "id, user_id, discipline, name, description, "
+        "created_at, updated_at "
+        "FROM combat_sports_combinations "
+        "WHERE id = ? AND user_id = ?;";
+
+    sqlite3_stmt* combinationStatement = nullptr;
+
+    int result = sqlite3_prepare_v2(
+        db,
+        combinationSql,
+        -1,
+        &combinationStatement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare combination lookup statement: "
+             << sqlite3_errmsg(db) << endl;
+
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_bind_int(
+        combinationStatement,
+        1,
+        combinationId
+    );
+
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_int(
+            combinationStatement,
+            2,
+            userId
+        );
+    }
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combination lookup values: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(combinationStatement);
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_step(combinationStatement);
+
+    if (result == SQLITE_DONE) {
+        sqlite3_finalize(combinationStatement);
+        return DatabaseResult::NotFound;
+    }
+
+    if (result != SQLITE_ROW) {
+        cerr << "Failed to retrieve combat sports combination: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(combinationStatement);
+        return DatabaseResult::Error;
+    }
+
+    combination.id = sqlite3_column_int(
+        combinationStatement,
+        0
+    );
+
+    combination.userId = sqlite3_column_int(
+        combinationStatement,
+        1
+    );
+
+    combination.discipline = reinterpret_cast<const char*>(
+        sqlite3_column_text(combinationStatement, 2)
+    );
+
+    combination.name = reinterpret_cast<const char*>(
+        sqlite3_column_text(combinationStatement, 3)
+    );
+
+    const unsigned char* storedDescription =
+        sqlite3_column_text(combinationStatement, 4);
+
+    combination.description = storedDescription != nullptr
+        ? reinterpret_cast<const char*>(storedDescription)
+        : "";
+
+    combination.createdAt = reinterpret_cast<const char*>(
+        sqlite3_column_text(combinationStatement, 5)
+    );
+
+    combination.updatedAt = reinterpret_cast<const char*>(
+        sqlite3_column_text(combinationStatement, 6)
+    );
+
+    combination.steps.clear();
+
+    sqlite3_finalize(combinationStatement);
+
+    const char* stepsSql =
+        "SELECT "
+        "steps.id, steps.user_id, steps.combination_id, "
+        "steps.technique_id, steps.step_order, "
+        "techniques.name, techniques.category "
+        "FROM combat_sports_combination_steps AS steps "
+        "INNER JOIN combat_sports_techniques AS techniques "
+        "ON techniques.id = steps.technique_id "
+        "AND techniques.user_id = steps.user_id "
+        "WHERE steps.combination_id = ? "
+        "AND steps.user_id = ? "
+        "ORDER BY steps.step_order ASC;";
+
+    sqlite3_stmt* stepsStatement = nullptr;
+
+    result = sqlite3_prepare_v2(
+        db,
+        stepsSql,
+        -1,
+        &stepsStatement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare combination steps lookup: "
+             << sqlite3_errmsg(db) << endl;
+
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_bind_int(
+        stepsStatement,
+        1,
+        combinationId
+    );
+
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_int(
+            stepsStatement,
+            2,
+            userId
+        );
+    }
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combination steps lookup values: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(stepsStatement);
+        return DatabaseResult::Error;
+    }
+
+    while ((result = sqlite3_step(stepsStatement)) == SQLITE_ROW) {
+        CombatSportsCombinationStep step;
+
+        step.id = sqlite3_column_int(stepsStatement, 0);
+        step.userId = sqlite3_column_int(stepsStatement, 1);
+        step.combinationId = sqlite3_column_int(stepsStatement, 2);
+        step.techniqueId = sqlite3_column_int(stepsStatement, 3);
+        step.stepOrder = sqlite3_column_int(stepsStatement, 4);
+
+        step.techniqueName = reinterpret_cast<const char*>(
+            sqlite3_column_text(stepsStatement, 5)
+        );
+
+        const unsigned char* storedCategory =
+            sqlite3_column_text(stepsStatement, 6);
+
+        step.techniqueCategory = storedCategory != nullptr
+            ? reinterpret_cast<const char*>(storedCategory)
+            : "";
+
+        combination.steps.push_back(step);
+    }
+
+    if (result == SQLITE_DONE) {
+        sqlite3_finalize(stepsStatement);
+        return DatabaseResult::Success;
+    }
+
+    cerr << "Failed to retrieve combination steps: "
+         << sqlite3_errmsg(db) << endl;
+
+    sqlite3_finalize(stepsStatement);
+    combination.steps.clear();
+
+    return DatabaseResult::Error;
+}
+
+// Retrieves all combinations belonging to a specific user
+DatabaseResult Database::getCombatSportsCombinations(
+    int userId,
+    vector<CombatSportsCombination>& combinations
+) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
+    const char* sql =
+        "SELECT id "
+        "FROM combat_sports_combinations "
+        "WHERE user_id = ? "
+        "ORDER BY discipline ASC, name ASC, id ASC;";
+
+    sqlite3_stmt* statement = nullptr;
+    vector<int> combinationIds;
+
+    combinations.clear();
+
+    int result = sqlite3_prepare_v2(
+        db,
+        sql,
+        -1,
+        &statement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare combinations lookup statement: "
+             << sqlite3_errmsg(db) << endl;
+
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_bind_int(
+        statement,
+        1,
+        userId
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combinations owner ID: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    // Collect the IDs first and finalize this statement before running
+    // the detailed lookup for each combination.
+    while ((result = sqlite3_step(statement)) == SQLITE_ROW) {
+        combinationIds.push_back(
+            sqlite3_column_int(statement, 0)
+        );
+    }
+
+    if (result != SQLITE_DONE) {
+        cerr << "Failed to retrieve combination IDs: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    sqlite3_finalize(statement);
+
+    for (int storedCombinationId : combinationIds) {
+        CombatSportsCombination combination;
+
+        DatabaseResult lookupResult =
+            getCombatSportsCombination(
+                storedCombinationId,
+                userId,
+                combination
+            );
+
+        if (lookupResult != DatabaseResult::Success) {
+            combinations.clear();
+            return DatabaseResult::Error;
+        }
+
+        combinations.push_back(combination);
+    }
+
+    // An empty vector is a successful retrieval when the user has not
+    // created any combinations yet.
+    return DatabaseResult::Success;
+}
+
+// Updates a combination and completely replaces its ordered steps
+DatabaseResult Database::updateCombatSportsCombination(
+    int combinationId,
+    int userId,
+    const string& discipline,
+    const string& name,
+    const string& description,
+    const vector<int>& techniqueIds
+) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
+    if (techniqueIds.empty()) {
+        cerr << "Cannot update a combination with no techniques."
+             << endl;
+
+        return DatabaseResult::Conflict;
+    }
+
+    if (!beginTransaction()) {
+        return DatabaseResult::Error;
+    }
+
+    const char* updateSql =
+        "UPDATE combat_sports_combinations "
+        "SET discipline = ?, "
+        "name = ?, "
+        "description = ?, "
+        "updated_at = CURRENT_TIMESTAMP "
+        "WHERE id = ? AND user_id = ?;";
+
+    sqlite3_stmt* updateStatement = nullptr;
+
+    int result = sqlite3_prepare_v2(
+        db,
+        updateSql,
+        -1,
+        &updateStatement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare combination update statement: "
+             << sqlite3_errmsg(db) << endl;
+
+        rollbackTransaction();
+        return DatabaseResult::Error;
+    }
+
+    if (!bindText(updateStatement, 1, discipline) ||
+        !bindText(updateStatement, 2, name) ||
+        !bindText(updateStatement, 3, description)) {
+
+        sqlite3_finalize(updateStatement);
+        rollbackTransaction();
+
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_bind_int(
+        updateStatement,
+        4,
+        combinationId
+    );
+
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_int(
+            updateStatement,
+            5,
+            userId
+        );
+    }
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combination update identifiers: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(updateStatement);
+        rollbackTransaction();
+
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_step(updateStatement);
+
+    if (result != SQLITE_DONE) {
+        DatabaseResult operationResult =
+            result == SQLITE_CONSTRAINT
+                ? DatabaseResult::Conflict
+                : DatabaseResult::Error;
+
+        cerr << "Failed to update combat sports combination: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(updateStatement);
+        rollbackTransaction();
+
+        return operationResult;
+    }
+
+    int updatedRows = sqlite3_changes(db);
+
+    sqlite3_finalize(updateStatement);
+
+    if (updatedRows == 0) {
+        rollbackTransaction();
+        return DatabaseResult::NotFound;
+    }
+
+    // Existing steps are removed only inside the transaction. If any new
+    // step fails, rollback restores the original combination and steps.
+    const char* deleteStepsSql =
+        "DELETE FROM combat_sports_combination_steps "
+        "WHERE combination_id = ? AND user_id = ?;";
+
+    sqlite3_stmt* deleteStepsStatement = nullptr;
+
+    result = sqlite3_prepare_v2(
+        db,
+        deleteStepsSql,
+        -1,
+        &deleteStepsStatement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare old combination steps deletion: "
+             << sqlite3_errmsg(db) << endl;
+
+        rollbackTransaction();
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_bind_int(
+        deleteStepsStatement,
+        1,
+        combinationId
+    );
+
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_int(
+            deleteStepsStatement,
+            2,
+            userId
+        );
+    }
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind old combination step identifiers: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(deleteStepsStatement);
+        rollbackTransaction();
+
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_step(deleteStepsStatement);
+
+    sqlite3_finalize(deleteStepsStatement);
+
+    if (result != SQLITE_DONE) {
+        cerr << "Failed to delete old combination steps: "
+             << sqlite3_errmsg(db) << endl;
+
+        rollbackTransaction();
+        return DatabaseResult::Error;
+    }
+
+    const char* insertStepSql =
+        "INSERT INTO combat_sports_combination_steps ("
+        "user_id, combination_id, technique_id, step_order"
+        ") "
+        "SELECT ?, ?, id, ? "
+        "FROM combat_sports_techniques "
+        "WHERE id = ? "
+        "AND user_id = ? "
+        "AND discipline = ?;";
+
+    sqlite3_stmt* insertStepStatement = nullptr;
+
+    result = sqlite3_prepare_v2(
+        db,
+        insertStepSql,
+        -1,
+        &insertStepStatement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare updated combination step insert: "
+             << sqlite3_errmsg(db) << endl;
+
+        rollbackTransaction();
+        return DatabaseResult::Error;
+    }
+
+    for (size_t index = 0; index < techniqueIds.size(); index++) {
+        sqlite3_reset(insertStepStatement);
+        sqlite3_clear_bindings(insertStepStatement);
+
+        int stepOrder = static_cast<int>(index) + 1;
+
+        result = sqlite3_bind_int(
+            insertStepStatement,
+            1,
+            userId
+        );
+
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_int(
+                insertStepStatement,
+                2,
+                combinationId
+            );
+        }
+
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_int(
+                insertStepStatement,
+                3,
+                stepOrder
+            );
+        }
+
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_int(
+                insertStepStatement,
+                4,
+                techniqueIds[index]
+            );
+        }
+
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_int(
+                insertStepStatement,
+                5,
+                userId
+            );
+        }
+
+        if (result != SQLITE_OK ||
+            !bindText(insertStepStatement, 6, discipline)) {
+
+            cerr << "Failed to bind updated combination step: "
+                 << sqlite3_errmsg(db) << endl;
+
+            sqlite3_finalize(insertStepStatement);
+            rollbackTransaction();
+
+            return DatabaseResult::Error;
+        }
+
+        result = sqlite3_step(insertStepStatement);
+
+        if (result != SQLITE_DONE) {
+            DatabaseResult operationResult =
+                result == SQLITE_CONSTRAINT
+                    ? DatabaseResult::Conflict
+                    : DatabaseResult::Error;
+
+            cerr << "Failed to insert updated combination step: "
+                 << sqlite3_errmsg(db) << endl;
+
+            sqlite3_finalize(insertStepStatement);
+            rollbackTransaction();
+
+            return operationResult;
+        }
+
+        if (sqlite3_changes(db) == 0) {
+            cerr << "Updated combination technique was not found or "
+                 << "did not match the combination discipline."
+                 << endl;
+
+            sqlite3_finalize(insertStepStatement);
+            rollbackTransaction();
+
+            return DatabaseResult::NotFound;
+        }
+    }
+
+    sqlite3_finalize(insertStepStatement);
+
+    if (!commitTransaction()) {
+        rollbackTransaction();
+        return DatabaseResult::Error;
+    }
+
+    return DatabaseResult::Success;
+}
+
+// Deletes a combination belonging to a specific user
+DatabaseResult Database::deleteCombatSportsCombination(
+    int combinationId,
+    int userId
+) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
+    const char* sql =
+        "DELETE FROM combat_sports_combinations "
+        "WHERE id = ? AND user_id = ?;";
+
+    sqlite3_stmt* statement = nullptr;
+
+    int result = sqlite3_prepare_v2(
+        db,
+        sql,
+        -1,
+        &statement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare combination delete statement: "
+             << sqlite3_errmsg(db) << endl;
+
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_bind_int(
+        statement,
+        1,
+        combinationId
+    );
+
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_int(
+            statement,
+            2,
+            userId
+        );
+    }
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combination delete identifiers: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_step(statement);
+
+    if (result == SQLITE_DONE) {
+        int deletedRows = sqlite3_changes(db);
+
+        sqlite3_finalize(statement);
+
+        if (deletedRows == 0) {
+            return DatabaseResult::NotFound;
+        }
+
+        // Combination steps are removed automatically through ON DELETE
+        // CASCADE when the parent combination is deleted.
+        return DatabaseResult::Success;
+    }
+
+    // A combination referenced by a drill is protected by ON DELETE RESTRICT.
+    if (result == SQLITE_CONSTRAINT) {
+        cerr << "Combat sports combination deletion conflict: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Conflict;
+    }
+
+    cerr << "Failed to delete combat sports combination: "
+         << sqlite3_errmsg(db) << endl;
+
+    sqlite3_finalize(statement);
+
+    return DatabaseResult::Error;
+}
+
+// Creates a drill and its ordered items within one transaction
+DatabaseResult Database::createCombatSportsDrill(
+    int userId,
+    const string& discipline,
+    const string& name,
+    const string& instructions,
+    const optional<int>& defaultDurationSeconds,
+    const optional<int>& defaultRepetitions,
+    const optional<int>& defaultRounds,
+    const string& notes,
+    const vector<CombatSportsDrillItemInput>& items,
+    int& drillId
+) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
+    if (items.empty()) {
+        cerr << "Cannot create a drill with no items." << endl;
+        return DatabaseResult::Conflict;
+    }
+
+    if (!beginTransaction()) {
+        return DatabaseResult::Error;
+    }
+
+    const char* drillSql =
+        "INSERT INTO combat_sports_drills ("
+        "user_id, discipline, name, instructions, "
+        "default_duration_seconds, default_repetitions, "
+        "default_rounds, notes"
+        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?);";
+
+    sqlite3_stmt* drillStatement = nullptr;
+
+    int result = sqlite3_prepare_v2(
+        db,
+        drillSql,
+        -1,
+        &drillStatement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare combat sports drill insert: "
+             << sqlite3_errmsg(db) << endl;
+
+        rollbackTransaction();
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_bind_int(
+        drillStatement,
+        1,
+        userId
+    );
+
+    if (result != SQLITE_OK ||
+        !bindText(drillStatement, 2, discipline) ||
+        !bindText(drillStatement, 3, name) ||
+        !bindText(drillStatement, 4, instructions)) {
+
+        sqlite3_finalize(drillStatement);
+        rollbackTransaction();
+
+        return DatabaseResult::Error;
+    }
+
+    // Optional numeric values are stored as SQL NULL when the user does
+    // not provide them.
+    result = defaultDurationSeconds.has_value()
+        ? sqlite3_bind_int(
+            drillStatement,
+            5,
+            defaultDurationSeconds.value()
+        )
+        : sqlite3_bind_null(drillStatement, 5);
+
+    if (result == SQLITE_OK) {
+        result = defaultRepetitions.has_value()
+            ? sqlite3_bind_int(
+                drillStatement,
+                6,
+                defaultRepetitions.value()
+            )
+            : sqlite3_bind_null(drillStatement, 6);
+    }
+
+    if (result == SQLITE_OK) {
+        result = defaultRounds.has_value()
+            ? sqlite3_bind_int(
+                drillStatement,
+                7,
+                defaultRounds.value()
+            )
+            : sqlite3_bind_null(drillStatement, 7);
+    }
+
+    if (result != SQLITE_OK ||
+        !bindText(drillStatement, 8, notes)) {
+
+        cerr << "Failed to bind combat sports drill values: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(drillStatement);
+        rollbackTransaction();
+
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_step(drillStatement);
+
+    sqlite3_finalize(drillStatement);
+
+    if (result != SQLITE_DONE) {
+        DatabaseResult operationResult =
+            result == SQLITE_CONSTRAINT
+                ? DatabaseResult::Conflict
+                : DatabaseResult::Error;
+
+        cerr << "Failed to create combat sports drill: "
+             << sqlite3_errmsg(db) << endl;
+
+        rollbackTransaction();
+
+        return operationResult;
+    }
+
+    int newDrillId = static_cast<int>(
+        sqlite3_last_insert_rowid(db)
+    );
+
+    const char* techniqueItemSql =
+        "INSERT INTO combat_sports_drill_items ("
+        "user_id, drill_id, item_type, technique_id, "
+        "combination_id, item_order"
+        ") "
+        "SELECT ?, ?, 'technique', id, NULL, ? "
+        "FROM combat_sports_techniques "
+        "WHERE id = ? "
+        "AND user_id = ? "
+        "AND discipline = ?;";
+
+    const char* combinationItemSql =
+        "INSERT INTO combat_sports_drill_items ("
+        "user_id, drill_id, item_type, technique_id, "
+        "combination_id, item_order"
+        ") "
+        "SELECT ?, ?, 'combination', NULL, id, ? "
+        "FROM combat_sports_combinations "
+        "WHERE id = ? "
+        "AND user_id = ? "
+        "AND discipline = ?;";
+
+    for (size_t index = 0; index < items.size(); index++) {
+        const CombatSportsDrillItemInput& item = items[index];
+
+        const char* itemSql = nullptr;
+
+        if (item.itemType == "technique") {
+            itemSql = techniqueItemSql;
+        }
+        else if (item.itemType == "combination") {
+            itemSql = combinationItemSql;
+        }
+        else {
+            cerr << "Unsupported combat sports drill item type: "
+                 << item.itemType << endl;
+
+            rollbackTransaction();
+            return DatabaseResult::Conflict;
+        }
+
+        sqlite3_stmt* itemStatement = nullptr;
+
+        result = sqlite3_prepare_v2(
+            db,
+            itemSql,
+            -1,
+            &itemStatement,
+            nullptr
+        );
+
+        if (result != SQLITE_OK) {
+            cerr << "Failed to prepare combat sports drill item insert: "
+                 << sqlite3_errmsg(db) << endl;
+
+            rollbackTransaction();
+            return DatabaseResult::Error;
+        }
+
+        int itemOrder = static_cast<int>(index) + 1;
+
+        result = sqlite3_bind_int(
+            itemStatement,
+            1,
+            userId
+        );
+
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_int(
+                itemStatement,
+                2,
+                newDrillId
+            );
+        }
+
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_int(
+                itemStatement,
+                3,
+                itemOrder
+            );
+        }
+
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_int(
+                itemStatement,
+                4,
+                item.referenceId
+            );
+        }
+
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_int(
+                itemStatement,
+                5,
+                userId
+            );
+        }
+
+        if (result != SQLITE_OK ||
+            !bindText(itemStatement, 6, discipline)) {
+
+            cerr << "Failed to bind combat sports drill item: "
+                 << sqlite3_errmsg(db) << endl;
+
+            sqlite3_finalize(itemStatement);
+            rollbackTransaction();
+
+            return DatabaseResult::Error;
+        }
+
+        result = sqlite3_step(itemStatement);
+
+        if (result != SQLITE_DONE) {
+            DatabaseResult operationResult =
+                result == SQLITE_CONSTRAINT
+                    ? DatabaseResult::Conflict
+                    : DatabaseResult::Error;
+
+            cerr << "Failed to insert combat sports drill item: "
+                 << sqlite3_errmsg(db) << endl;
+
+            sqlite3_finalize(itemStatement);
+            rollbackTransaction();
+
+            return operationResult;
+        }
+
+        if (sqlite3_changes(db) == 0) {
+            cerr << "Drill item was not found or did not match "
+                 << "the drill discipline."
+                 << endl;
+
+            sqlite3_finalize(itemStatement);
+            rollbackTransaction();
+
+            return DatabaseResult::NotFound;
+        }
+
+        sqlite3_finalize(itemStatement);
+    }
+
+    if (!commitTransaction()) {
+        rollbackTransaction();
+        return DatabaseResult::Error;
+    }
+
+    drillId = newDrillId;
+
+    return DatabaseResult::Success;
+}
+
+// Retrieves one drill and its ordered technique or combination items
+DatabaseResult Database::getCombatSportsDrill(
+    int drillId,
+    int userId,
+    CombatSportsDrill& drill
+) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
+    const char* drillSql =
+        "SELECT "
+        "id, user_id, discipline, name, instructions, "
+        "default_duration_seconds, default_repetitions, "
+        "default_rounds, notes, created_at, updated_at "
+        "FROM combat_sports_drills "
+        "WHERE id = ? AND user_id = ?;";
+
+    sqlite3_stmt* drillStatement = nullptr;
+
+    int result = sqlite3_prepare_v2(
+        db,
+        drillSql,
+        -1,
+        &drillStatement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare combat sports drill lookup: "
+             << sqlite3_errmsg(db) << endl;
+
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_bind_int(
+        drillStatement,
+        1,
+        drillId
+    );
+
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_int(
+            drillStatement,
+            2,
+            userId
+        );
+    }
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combat sports drill lookup values: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(drillStatement);
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_step(drillStatement);
+
+    if (result == SQLITE_DONE) {
+        sqlite3_finalize(drillStatement);
+        return DatabaseResult::NotFound;
+    }
+
+    if (result != SQLITE_ROW) {
+        cerr << "Failed to retrieve combat sports drill: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(drillStatement);
+        return DatabaseResult::Error;
+    }
+
+    drill.id = sqlite3_column_int(drillStatement, 0);
+    drill.userId = sqlite3_column_int(drillStatement, 1);
+
+    drill.discipline = reinterpret_cast<const char*>(
+        sqlite3_column_text(drillStatement, 2)
+    );
+
+    drill.name = reinterpret_cast<const char*>(
+        sqlite3_column_text(drillStatement, 3)
+    );
+
+    const unsigned char* storedInstructions =
+        sqlite3_column_text(drillStatement, 4);
+
+    drill.instructions = storedInstructions != nullptr
+        ? reinterpret_cast<const char*>(storedInstructions)
+        : "";
+
+    // Preserve the difference between an omitted setting and a numeric value.
+    if (sqlite3_column_type(drillStatement, 5) == SQLITE_NULL) {
+        drill.defaultDurationSeconds.reset();
+    }
+    else {
+        drill.defaultDurationSeconds =
+            sqlite3_column_int(drillStatement, 5);
+    }
+
+    if (sqlite3_column_type(drillStatement, 6) == SQLITE_NULL) {
+        drill.defaultRepetitions.reset();
+    }
+    else {
+        drill.defaultRepetitions =
+            sqlite3_column_int(drillStatement, 6);
+    }
+
+    if (sqlite3_column_type(drillStatement, 7) == SQLITE_NULL) {
+        drill.defaultRounds.reset();
+    }
+    else {
+        drill.defaultRounds =
+            sqlite3_column_int(drillStatement, 7);
+    }
+
+    const unsigned char* storedNotes =
+        sqlite3_column_text(drillStatement, 8);
+
+    drill.notes = storedNotes != nullptr
+        ? reinterpret_cast<const char*>(storedNotes)
+        : "";
+
+    drill.createdAt = reinterpret_cast<const char*>(
+        sqlite3_column_text(drillStatement, 9)
+    );
+
+    drill.updatedAt = reinterpret_cast<const char*>(
+        sqlite3_column_text(drillStatement, 10)
+    );
+
+    drill.items.clear();
+
+    sqlite3_finalize(drillStatement);
+
+    const char* itemsSql =
+        "SELECT "
+        "items.id, items.user_id, items.drill_id, "
+        "items.item_type, items.technique_id, "
+        "items.combination_id, items.item_order, "
+        "CASE "
+            "WHEN items.item_type = 'technique' THEN techniques.name "
+            "WHEN items.item_type = 'combination' THEN combinations.name "
+            "ELSE NULL "
+        "END AS item_name "
+        "FROM combat_sports_drill_items AS items "
+        "LEFT JOIN combat_sports_techniques AS techniques "
+        "ON techniques.id = items.technique_id "
+        "AND techniques.user_id = items.user_id "
+        "LEFT JOIN combat_sports_combinations AS combinations "
+        "ON combinations.id = items.combination_id "
+        "AND combinations.user_id = items.user_id "
+        "WHERE items.drill_id = ? "
+        "AND items.user_id = ? "
+        "ORDER BY items.item_order ASC;";
+
+    sqlite3_stmt* itemsStatement = nullptr;
+
+    result = sqlite3_prepare_v2(
+        db,
+        itemsSql,
+        -1,
+        &itemsStatement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare combat sports drill items lookup: "
+             << sqlite3_errmsg(db) << endl;
+
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_bind_int(
+        itemsStatement,
+        1,
+        drillId
+    );
+
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_int(
+            itemsStatement,
+            2,
+            userId
+        );
+    }
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combat sports drill item lookup values: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(itemsStatement);
+        return DatabaseResult::Error;
+    }
+
+    while ((result = sqlite3_step(itemsStatement)) == SQLITE_ROW) {
+        CombatSportsDrillItem item;
+
+        item.id = sqlite3_column_int(itemsStatement, 0);
+        item.userId = sqlite3_column_int(itemsStatement, 1);
+        item.drillId = sqlite3_column_int(itemsStatement, 2);
+
+        item.itemType = reinterpret_cast<const char*>(
+            sqlite3_column_text(itemsStatement, 3)
+        );
+
+        if (sqlite3_column_type(itemsStatement, 4) == SQLITE_NULL) {
+            item.techniqueId.reset();
+        }
+        else {
+            item.techniqueId =
+                sqlite3_column_int(itemsStatement, 4);
+        }
+
+        if (sqlite3_column_type(itemsStatement, 5) == SQLITE_NULL) {
+            item.combinationId.reset();
+        }
+        else {
+            item.combinationId =
+                sqlite3_column_int(itemsStatement, 5);
+        }
+
+        item.itemOrder = sqlite3_column_int(itemsStatement, 6);
+
+        const unsigned char* storedItemName =
+            sqlite3_column_text(itemsStatement, 7);
+
+        if (storedItemName == nullptr) {
+            cerr << "Combat sports drill item had no referenced name."
+                 << endl;
+
+            sqlite3_finalize(itemsStatement);
+            drill.items.clear();
+
+            return DatabaseResult::Error;
+        }
+
+        item.itemName =
+            reinterpret_cast<const char*>(storedItemName);
+
+        drill.items.push_back(item);
+    }
+
+    if (result == SQLITE_DONE) {
+        sqlite3_finalize(itemsStatement);
+        return DatabaseResult::Success;
+    }
+
+    cerr << "Failed to retrieve combat sports drill items: "
+         << sqlite3_errmsg(db) << endl;
+
+    sqlite3_finalize(itemsStatement);
+    drill.items.clear();
+
+    return DatabaseResult::Error;
+}
+
+// Retrieves all drills belonging to a specific user
+DatabaseResult Database::getCombatSportsDrills(
+    int userId,
+    vector<CombatSportsDrill>& drills
+) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
+    const char* sql =
+        "SELECT id "
+        "FROM combat_sports_drills "
+        "WHERE user_id = ? "
+        "ORDER BY discipline ASC, name ASC, id ASC;";
+
+    sqlite3_stmt* statement = nullptr;
+    vector<int> drillIds;
+
+    drills.clear();
+
+    int result = sqlite3_prepare_v2(
+        db,
+        sql,
+        -1,
+        &statement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare combat sports drills lookup: "
+             << sqlite3_errmsg(db) << endl;
+
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_bind_int(
+        statement,
+        1,
+        userId
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combat sports drills owner ID: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    while ((result = sqlite3_step(statement)) == SQLITE_ROW) {
+        drillIds.push_back(
+            sqlite3_column_int(statement, 0)
+        );
+    }
+
+    if (result != SQLITE_DONE) {
+        cerr << "Failed to retrieve combat sports drill IDs: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    sqlite3_finalize(statement);
+
+    for (int storedDrillId : drillIds) {
+        CombatSportsDrill drill;
+
+        DatabaseResult lookupResult = getCombatSportsDrill(
+            storedDrillId,
+            userId,
+            drill
+        );
+
+        if (lookupResult != DatabaseResult::Success) {
+            drills.clear();
+            return DatabaseResult::Error;
+        }
+
+        drills.push_back(drill);
+    }
+
+    return DatabaseResult::Success;
+}
+
+// Updates a drill and completely replaces its ordered items
+DatabaseResult Database::updateCombatSportsDrill(
+    int drillId,
+    int userId,
+    const string& discipline,
+    const string& name,
+    const string& instructions,
+    const optional<int>& defaultDurationSeconds,
+    const optional<int>& defaultRepetitions,
+    const optional<int>& defaultRounds,
+    const string& notes,
+    const vector<CombatSportsDrillItemInput>& items
+) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
+    if (items.empty()) {
+        cerr << "Cannot update a drill with no items." << endl;
+        return DatabaseResult::Conflict;
+    }
+
+    if (!beginTransaction()) {
+        return DatabaseResult::Error;
+    }
+
+    const char* updateSql =
+        "UPDATE combat_sports_drills "
+        "SET discipline = ?, "
+        "name = ?, "
+        "instructions = ?, "
+        "default_duration_seconds = ?, "
+        "default_repetitions = ?, "
+        "default_rounds = ?, "
+        "notes = ?, "
+        "updated_at = CURRENT_TIMESTAMP "
+        "WHERE id = ? AND user_id = ?;";
+
+    sqlite3_stmt* updateStatement = nullptr;
+
+    int result = sqlite3_prepare_v2(
+        db,
+        updateSql,
+        -1,
+        &updateStatement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare combat sports drill update: "
+             << sqlite3_errmsg(db) << endl;
+
+        rollbackTransaction();
+        return DatabaseResult::Error;
+    }
+
+    if (!bindText(updateStatement, 1, discipline) ||
+        !bindText(updateStatement, 2, name) ||
+        !bindText(updateStatement, 3, instructions)) {
+
+        sqlite3_finalize(updateStatement);
+        rollbackTransaction();
+
+        return DatabaseResult::Error;
+    }
+
+    result = defaultDurationSeconds.has_value()
+        ? sqlite3_bind_int(
+            updateStatement,
+            4,
+            defaultDurationSeconds.value()
+        )
+        : sqlite3_bind_null(updateStatement, 4);
+
+    if (result == SQLITE_OK) {
+        result = defaultRepetitions.has_value()
+            ? sqlite3_bind_int(
+                updateStatement,
+                5,
+                defaultRepetitions.value()
+            )
+            : sqlite3_bind_null(updateStatement, 5);
+    }
+
+    if (result == SQLITE_OK) {
+        result = defaultRounds.has_value()
+            ? sqlite3_bind_int(
+                updateStatement,
+                6,
+                defaultRounds.value()
+            )
+            : sqlite3_bind_null(updateStatement, 6);
+    }
+
+    if (result != SQLITE_OK ||
+        !bindText(updateStatement, 7, notes)) {
+
+        cerr << "Failed to bind updated drill values: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(updateStatement);
+        rollbackTransaction();
+
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_bind_int(
+        updateStatement,
+        8,
+        drillId
+    );
+
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_int(
+            updateStatement,
+            9,
+            userId
+        );
+    }
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind updated drill identifiers: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(updateStatement);
+        rollbackTransaction();
+
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_step(updateStatement);
+
+    if (result != SQLITE_DONE) {
+        DatabaseResult operationResult =
+            result == SQLITE_CONSTRAINT
+                ? DatabaseResult::Conflict
+                : DatabaseResult::Error;
+
+        cerr << "Failed to update combat sports drill: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(updateStatement);
+        rollbackTransaction();
+
+        return operationResult;
+    }
+
+    int updatedRows = sqlite3_changes(db);
+
+    sqlite3_finalize(updateStatement);
+
+    if (updatedRows == 0) {
+        rollbackTransaction();
+        return DatabaseResult::NotFound;
+    }
+
+    // Removing the old items inside the transaction allows rollback to
+    // restore them if any replacement item is invalid.
+    const char* deleteItemsSql =
+        "DELETE FROM combat_sports_drill_items "
+        "WHERE drill_id = ? AND user_id = ?;";
+
+    sqlite3_stmt* deleteItemsStatement = nullptr;
+
+    result = sqlite3_prepare_v2(
+        db,
+        deleteItemsSql,
+        -1,
+        &deleteItemsStatement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare old drill item deletion: "
+             << sqlite3_errmsg(db) << endl;
+
+        rollbackTransaction();
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_bind_int(
+        deleteItemsStatement,
+        1,
+        drillId
+    );
+
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_int(
+            deleteItemsStatement,
+            2,
+            userId
+        );
+    }
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind old drill item identifiers: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(deleteItemsStatement);
+        rollbackTransaction();
+
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_step(deleteItemsStatement);
+
+    sqlite3_finalize(deleteItemsStatement);
+
+    if (result != SQLITE_DONE) {
+        cerr << "Failed to delete old combat sports drill items: "
+             << sqlite3_errmsg(db) << endl;
+
+        rollbackTransaction();
+        return DatabaseResult::Error;
+    }
+
+    const char* techniqueItemSql =
+        "INSERT INTO combat_sports_drill_items ("
+        "user_id, drill_id, item_type, technique_id, "
+        "combination_id, item_order"
+        ") "
+        "SELECT ?, ?, 'technique', id, NULL, ? "
+        "FROM combat_sports_techniques "
+        "WHERE id = ? "
+        "AND user_id = ? "
+        "AND discipline = ?;";
+
+    const char* combinationItemSql =
+        "INSERT INTO combat_sports_drill_items ("
+        "user_id, drill_id, item_type, technique_id, "
+        "combination_id, item_order"
+        ") "
+        "SELECT ?, ?, 'combination', NULL, id, ? "
+        "FROM combat_sports_combinations "
+        "WHERE id = ? "
+        "AND user_id = ? "
+        "AND discipline = ?;";
+
+    for (size_t index = 0; index < items.size(); index++) {
+        const CombatSportsDrillItemInput& item = items[index];
+
+        const char* itemSql = nullptr;
+
+        if (item.itemType == "technique") {
+            itemSql = techniqueItemSql;
+        }
+        else if (item.itemType == "combination") {
+            itemSql = combinationItemSql;
+        }
+        else {
+            cerr << "Unsupported updated drill item type: "
+                 << item.itemType << endl;
+
+            rollbackTransaction();
+            return DatabaseResult::Conflict;
+        }
+
+        sqlite3_stmt* itemStatement = nullptr;
+
+        result = sqlite3_prepare_v2(
+            db,
+            itemSql,
+            -1,
+            &itemStatement,
+            nullptr
+        );
+
+        if (result != SQLITE_OK) {
+            cerr << "Failed to prepare updated drill item insert: "
+                 << sqlite3_errmsg(db) << endl;
+
+            rollbackTransaction();
+            return DatabaseResult::Error;
+        }
+
+        int itemOrder = static_cast<int>(index) + 1;
+
+        result = sqlite3_bind_int(
+            itemStatement,
+            1,
+            userId
+        );
+
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_int(
+                itemStatement,
+                2,
+                drillId
+            );
+        }
+
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_int(
+                itemStatement,
+                3,
+                itemOrder
+            );
+        }
+
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_int(
+                itemStatement,
+                4,
+                item.referenceId
+            );
+        }
+
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_int(
+                itemStatement,
+                5,
+                userId
+            );
+        }
+
+        if (result != SQLITE_OK ||
+            !bindText(itemStatement, 6, discipline)) {
+
+            cerr << "Failed to bind updated drill item values: "
+                 << sqlite3_errmsg(db) << endl;
+
+            sqlite3_finalize(itemStatement);
+            rollbackTransaction();
+
+            return DatabaseResult::Error;
+        }
+
+        result = sqlite3_step(itemStatement);
+
+        if (result != SQLITE_DONE) {
+            DatabaseResult operationResult =
+                result == SQLITE_CONSTRAINT
+                    ? DatabaseResult::Conflict
+                    : DatabaseResult::Error;
+
+            cerr << "Failed to insert updated drill item: "
+                 << sqlite3_errmsg(db) << endl;
+
+            sqlite3_finalize(itemStatement);
+            rollbackTransaction();
+
+            return operationResult;
+        }
+
+        if (sqlite3_changes(db) == 0) {
+            cerr << "Updated drill item was not found or did not "
+                 << "match the drill discipline."
+                 << endl;
+
+            sqlite3_finalize(itemStatement);
+            rollbackTransaction();
+
+            return DatabaseResult::NotFound;
+        }
+
+        sqlite3_finalize(itemStatement);
+    }
+
+    if (!commitTransaction()) {
+        rollbackTransaction();
+        return DatabaseResult::Error;
+    }
+
+    return DatabaseResult::Success;
+}
+
+// Deletes a drill belonging to a specific user
+DatabaseResult Database::deleteCombatSportsDrill(
+    int drillId,
+    int userId
+) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
+    const char* sql =
+        "DELETE FROM combat_sports_drills "
+        "WHERE id = ? AND user_id = ?;";
+
+    sqlite3_stmt* statement = nullptr;
+
+    int result = sqlite3_prepare_v2(
+        db,
+        sql,
+        -1,
+        &statement,
+        nullptr
+    );
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to prepare combat sports drill deletion: "
+             << sqlite3_errmsg(db) << endl;
+
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_bind_int(
+        statement,
+        1,
+        drillId
+    );
+
+    if (result == SQLITE_OK) {
+        result = sqlite3_bind_int(
+            statement,
+            2,
+            userId
+        );
+    }
+
+    if (result != SQLITE_OK) {
+        cerr << "Failed to bind combat sports drill identifiers: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    result = sqlite3_step(statement);
+
+    if (result == SQLITE_DONE) {
+        int deletedRows = sqlite3_changes(db);
+
+        sqlite3_finalize(statement);
+
+        if (deletedRows == 0) {
+            return DatabaseResult::NotFound;
+        }
+
+        // Ordered drill items are removed through ON DELETE CASCADE.
+        return DatabaseResult::Success;
+    }
+
+    if (result == SQLITE_CONSTRAINT) {
+        cerr << "Combat sports drill deletion conflict: "
+             << sqlite3_errmsg(db) << endl;
+
+        sqlite3_finalize(statement);
+        return DatabaseResult::Conflict;
+    }
+
+    cerr << "Failed to delete combat sports drill: "
+         << sqlite3_errmsg(db) << endl;
+
+    sqlite3_finalize(statement);
+
+    return DatabaseResult::Error;
+}
+
