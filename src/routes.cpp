@@ -1,5 +1,6 @@
 #include "routes.h"
 #include "auth.h"
+#include "combat_sports_content_routes.h"
 #include "validation.h"
 
 #include <string>
@@ -1123,6 +1124,10 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
         return response;
     });
     
+    // Keep reusable combat-sports content routes in a focused module so this
+    // existing route registry does not become harder to maintain.
+    registerCombatSportsContentRoutes(app, database);
+
     // Health route used to verify that the web server is responding correctly
     CROW_ROUTE(app, "/api/health")([]() {
         return createJsonSuccessResponse(
