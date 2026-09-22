@@ -1,0 +1,177 @@
+.workout-manager {
+    width: 100%;
+    margin-top: var(--space-lg);
+    box-sizing: border-box;
+}
+
+.workout-manager__header,
+.workout-card__header,
+.workout-activity__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-lg);
+}
+
+.workout-manager__count,
+.workout-card__summary span,
+.workout-card__disciplines span {
+    padding: var(--space-xs) var(--space-sm);
+    color: var(--color-text-muted);
+    background: var(--color-surface-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+}
+
+.workout-manager__loading {
+    display: flex;
+    justify-content: center;
+    padding: var(--space-2xl);
+}
+
+.workout-manager__grid {
+    display: grid;
+    grid-template-columns: minmax(22rem, 7fr) minmax(18rem, 5fr);
+    gap: var(--space-xl);
+    align-items: start;
+}
+
+.workout-form,
+.workout-list {
+    min-width: 0;
+}
+
+.workout-form > h3,
+.workout-list > h3,
+.workout-card h3,
+.workout-activity h4 {
+    margin-top: 0;
+}
+
+.workout-builder__group,
+.workout-round,
+.workout-activity {
+    margin: 0 0 var(--space-lg);
+    padding: var(--space-md);
+    background: var(--color-background);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+}
+
+.workout-builder__group legend,
+.workout-round legend {
+    padding: 0 var(--space-xs);
+    font-weight: var(--font-weight-semibold);
+}
+
+.workout-builder__row,
+.workout-builder__toolbar,
+.workout-form__actions,
+.workout-card__actions,
+.workout-card__summary,
+.workout-card__disciplines {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.workout-builder__row .ui-form-field {
+    flex: 1;
+}
+
+.workout-builder__row > .ui-button {
+    margin-top: var(--space-sm);
+}
+
+.workout-builder__toolbar {
+    justify-content: flex-end;
+    margin-bottom: var(--space-md);
+}
+
+.workout-builder__toolbar .ui-button {
+    min-height: 2.25rem;
+    padding: var(--space-xs) var(--space-sm);
+    font-size: var(--font-size-sm);
+}
+
+.workout-builder__two-column,
+.workout-builder__target-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-sm);
+}
+
+.workout-builder__target-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.workout-activity {
+    background: var(--color-surface);
+}
+
+.workout-card {
+    margin-bottom: var(--space-md);
+    padding: var(--space-md);
+    background: var(--color-background);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+}
+
+.workout-card h3,
+.workout-card p {
+    margin-bottom: var(--space-sm);
+}
+
+.workout-card p,
+.workout-list__empty,
+.workout-card__rounds span {
+    color: var(--color-text-muted);
+}
+
+.workout-card__rounds {
+    display: grid;
+    gap: var(--space-sm);
+    margin: var(--space-md) 0;
+    padding-left: var(--space-xl);
+}
+
+.workout-card__rounds li span {
+    display: block;
+    margin-top: var(--space-xs);
+}
+
+.workout-card__duplicate {
+    margin-top: var(--space-md);
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--color-border);
+}
+
+/* Separate the final save action from round-building controls. */
+.workout-form__actions {
+    margin-top: var(--space-lg);
+}
+
+@media (max-width: 64rem) {
+    .workout-manager__grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 44rem) {
+    .workout-manager__header,
+    .workout-card__header,
+    .workout-activity__header {
+        flex-direction: column;
+    }
+
+    .workout-builder__two-column,
+    .workout-builder__target-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .workout-builder__toolbar {
+        justify-content: flex-start;
+    }
+}

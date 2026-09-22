@@ -14,11 +14,14 @@ async function handleApiResponse(response) {
         combinations: data.combinations,
         drill: data.drill,
         drills: data.drills,
+        workout: data.workout,
+        workouts: data.workouts,
         count: data.count,
         deletedSessionId: data.deleted_session_id,
         deletedTechniqueId: data.deleted_technique_id,
         deletedCombinationId: data.deleted_combination_id,
-        deletedDrillId: data.deleted_drill_id
+        deletedDrillId: data.deleted_drill_id,
+        deletedWorkoutId: data.deleted_workout_id
     };
 }
 
@@ -207,6 +210,92 @@ export function updateCombatSportsDrill(drillId, values) {
 export function deleteCombatSportsDrill(drillId) {
     return sendContentRequest(
         `/api/combat-sports/drills/${drillId}`,
+        "DELETE"
+    );
+}
+
+// Convert the form's camelCase activity fields into the API's snake_case
+// contract. Undefined library references are omitted instead of sent as
+// empty strings, which keeps built-in activities valid.
+function serializeWorkout(workout) {
+    return {
+        name: workout.name,
+        description: workout.description,
+        disciplines: workout.disciplines,
+        rounds: workout.rounds.map((round) => ({
+            name: round.name,
+            description: round.description,
+            activities: round.activities.map((activity) => {
+                const serialized = {
+                    activity_type: activity.activityType,
+                    name: activity.name,
+                    instructions: activity.instructions,
+                    target_type: activity.targetType,
+                    target_value: Number(activity.targetValue),
+                    target_sets: Number(activity.targetSets),
+                    rest_after_seconds: Number(
+                        activity.restAfterSeconds
+                    )
+                };
+
+                if (activity.techniqueId) {
+                    serialized.technique_id = Number(
+                        activity.techniqueId
+                    );
+                }
+                if (activity.combinationId) {
+                    serialized.combination_id = Number(
+                        activity.combinationId
+                    );
+                }
+                if (activity.drillId) {
+                    serialized.drill_id = Number(activity.drillId);
+                }
+
+                return serialized;
+            })
+        }))
+    };
+}
+
+export function getCombatSportsWorkouts() {
+    return sendContentRequest("/api/combat-sports/workouts", "GET");
+}
+
+export function getCombatSportsWorkout(workoutId) {
+    return sendContentRequest(
+        `/api/combat-sports/workouts/${workoutId}`,
+        "GET"
+    );
+}
+
+export function createCombatSportsWorkout(values) {
+    return sendContentRequest(
+        "/api/combat-sports/workouts",
+        "POST",
+        serializeWorkout(values)
+    );
+}
+
+export function updateCombatSportsWorkout(workoutId, values) {
+    return sendContentRequest(
+        `/api/combat-sports/workouts/${workoutId}`,
+        "PUT",
+        serializeWorkout(values)
+    );
+}
+
+export function duplicateCombatSportsWorkout(workoutId, name) {
+    return sendContentRequest(
+        `/api/combat-sports/workouts/${workoutId}/duplicate`,
+        "POST",
+        { name }
+    );
+}
+
+export function deleteCombatSportsWorkout(workoutId) {
+    return sendContentRequest(
+        `/api/combat-sports/workouts/${workoutId}`,
         "DELETE"
     );
 }

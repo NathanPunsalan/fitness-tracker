@@ -6,6 +6,7 @@ import {
 
 import CombatSportsSessionHistory from "../components/combatSports/CombatSportsSessionHistory";
 import CombatSportsContentManager from "../components/combatSports/CombatSportsContentManager";
+import CombatSportsWorkoutManager from "../components/combatSports/CombatSportsWorkoutManager";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import FeedbackMessage from "../components/ui/FeedbackMessage";
@@ -543,6 +544,7 @@ function CombatSports() {
 
             <div className="combat-sports-content-area">
                 <CombatSportsContentManager />
+                <CombatSportsWorkoutManager />
             </div>
         </div>
     );

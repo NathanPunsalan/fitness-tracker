@@ -31,6 +31,12 @@ function replaceOrAdd(items, savedItem) {
         : [savedItem, ...items];
 }
 
+function notifyTrainingLibraryChanged() {
+    window.dispatchEvent(
+        new Event("combat-sports-library-changed")
+    );
+}
+
 function CombatSportsContentManager() {
     const [activeSection, setActiveSection] = useState("techniques");
     const [techniques, setTechniques] = useState([]);
@@ -63,6 +69,7 @@ function CombatSportsContentManager() {
                     : item
             )
         })));
+        notifyTrainingLibraryChanged();
     }
 
     function handleCombinationSaved(combination) {
@@ -75,6 +82,7 @@ function CombatSportsContentManager() {
                     : item
             )
         })));
+        notifyTrainingLibraryChanged();
     }
 
     useEffect(() => {
@@ -178,9 +186,12 @@ function CombatSportsContentManager() {
                             techniques={techniques}
                             onSaved={handleTechniqueSaved}
                             onDeleted={(techniqueId) =>
-                                setTechniques((items) =>
+                                setTechniques((items) => {
+                                    notifyTrainingLibraryChanged();
+                                    return (
                                     items.filter((item) => item.id !== techniqueId)
-                                )
+                                    );
+                                })
                             }
                         />
                     )}
@@ -191,9 +202,12 @@ function CombatSportsContentManager() {
                             combinations={combinations}
                             onSaved={handleCombinationSaved}
                             onDeleted={(combinationId) =>
-                                setCombinations((items) =>
+                                setCombinations((items) => {
+                                    notifyTrainingLibraryChanged();
+                                    return (
                                     items.filter((item) => item.id !== combinationId)
-                                )
+                                    );
+                                })
                             }
                         />
                     )}
@@ -204,12 +218,18 @@ function CombatSportsContentManager() {
                             combinations={combinations}
                             drills={drills}
                             onSaved={(drill) =>
-                                setDrills((items) => replaceOrAdd(items, drill))
+                                setDrills((items) => {
+                                    notifyTrainingLibraryChanged();
+                                    return replaceOrAdd(items, drill);
+                                })
                             }
                             onDeleted={(drillId) =>
-                                setDrills((items) =>
+                                setDrills((items) => {
+                                    notifyTrainingLibraryChanged();
+                                    return (
                                     items.filter((item) => item.id !== drillId)
-                                )
+                                    );
+                                })
                             }
                         />
                     )}
