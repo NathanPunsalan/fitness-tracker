@@ -3968,3 +3968,867 @@ DatabaseResult Database::deleteCombatSportsDrill(
 
     return DatabaseResult::Error;
 }
+
+namespace {
+
+bool isBlankWorkoutText(const string& value) {
+    return value.find_first_not_of(" \t\r\n") == string::npos;
+}
+
+bool bindWorkoutText(sqlite3_stmt* statement, int index, const string& value) {
+    return sqlite3_bind_text(
+        statement,
+        index,
+        value.c_str(),
+        -1,
+        SQLITE_TRANSIENT
+    ) == SQLITE_OK;
+}
+
+bool containsWorkoutDiscipline(
+    const vector<string>& disciplines,
+    const string& discipline
+) {
+    for (const string& candidate : disciplines) {
+        if (candidate == discipline) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+// Validates the shape before a transaction writes any nested records. The
+// database constraints remain the final guard against invalid stored data.
+bool validateWorkoutStructure(
+    const string& name,
+    const vector<string>& disciplines,
+    const vector<CombatSportsWorkoutRoundInput>& rounds
+) {
+    if (isBlankWorkoutText(name) || disciplines.empty() || rounds.empty()) {
+        return false;
+    }
+
+    for (const string& discipline : disciplines) {
+        if (isBlankWorkoutText(discipline)) {
+            return false;
+        }
+    }
+
+    for (const CombatSportsWorkoutRoundInput& round : rounds) {
+        if (round.activities.empty()) {
+            return false;
+        }
+
+        for (const CombatSportsWorkoutActivityInput& activity :
+             round.activities) {
+            bool libraryActivity =
+                activity.activityType == "technique" ||
+                activity.activityType == "combination" ||
+                activity.activityType == "drill";
+
+            bool builtInActivity =
+                activity.activityType == "jump_rope" ||
+                activity.activityType == "conditioning" ||
+                activity.activityType == "shadowboxing" ||
+                activity.activityType == "rest" ||
+                activity.activityType == "custom";
+
+            bool validTarget =
+                activity.targetType == "repetitions" ||
+                activity.targetType == "duration_seconds" ||
+                activity.targetType == "rounds";
+
+            int referenceCount =
+                (activity.techniqueId.has_value() ? 1 : 0) +
+                (activity.combinationId.has_value() ? 1 : 0) +
+                (activity.drillId.has_value() ? 1 : 0);
+
+            bool correctReference =
+                (activity.activityType == "technique" &&
+                    activity.techniqueId.has_value()) ||
+                (activity.activityType == "combination" &&
+                    activity.combinationId.has_value()) ||
+                (activity.activityType == "drill" &&
+                    activity.drillId.has_value());
+
+            if ((!libraryActivity && !builtInActivity) ||
+                !validTarget ||
+                activity.targetValue <= 0 ||
+                activity.targetSets <= 0 ||
+                activity.restAfterSeconds < 0 ||
+                isBlankWorkoutText(activity.nameSnapshot) ||
+                (libraryActivity &&
+                    (referenceCount != 1 || !correctReference)) ||
+                (builtInActivity && referenceCount != 0)) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+DatabaseResult validateWorkoutLibraryReference(
+    sqlite3* db,
+    int userId,
+    const vector<string>& disciplines,
+    const CombatSportsWorkoutActivityInput& activity
+) {
+    const char* sql = nullptr;
+    int referenceId = 0;
+
+    if (activity.activityType == "technique") {
+        sql = "SELECT discipline FROM combat_sports_techniques "
+              "WHERE id = ? AND user_id = ?;";
+        referenceId = activity.techniqueId.value();
+    }
+    else if (activity.activityType == "combination") {
+        sql = "SELECT discipline FROM combat_sports_combinations "
+              "WHERE id = ? AND user_id = ?;";
+        referenceId = activity.combinationId.value();
+    }
+    else if (activity.activityType == "drill") {
+        sql = "SELECT discipline FROM combat_sports_drills "
+              "WHERE id = ? AND user_id = ?;";
+        referenceId = activity.drillId.value();
+    }
+    else {
+        return DatabaseResult::Success;
+    }
+
+    sqlite3_stmt* statement = nullptr;
+
+    if (sqlite3_prepare_v2(db, sql, -1, &statement, nullptr) != SQLITE_OK ||
+        sqlite3_bind_int(statement, 1, referenceId) != SQLITE_OK ||
+        sqlite3_bind_int(statement, 2, userId) != SQLITE_OK) {
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    int result = sqlite3_step(statement);
+
+    if (result != SQLITE_ROW) {
+        sqlite3_finalize(statement);
+        return result == SQLITE_DONE
+            ? DatabaseResult::Conflict
+            : DatabaseResult::Error;
+    }
+
+    string discipline = reinterpret_cast<const char*>(
+        sqlite3_column_text(statement, 0)
+    );
+
+    sqlite3_finalize(statement);
+
+    return containsWorkoutDiscipline(disciplines, discipline)
+        ? DatabaseResult::Success
+        : DatabaseResult::Conflict;
+}
+
+DatabaseResult insertWorkoutChildren(
+    sqlite3* db,
+    int workoutTemplateId,
+    int userId,
+    const vector<string>& disciplines,
+    const vector<CombatSportsWorkoutRoundInput>& rounds
+) {
+    const char* disciplineSql =
+        "INSERT INTO combat_sports_workout_disciplines ("
+        "user_id, workout_template_id, discipline) VALUES (?, ?, ?);";
+
+    sqlite3_stmt* disciplineStatement = nullptr;
+
+    if (sqlite3_prepare_v2(
+            db,
+            disciplineSql,
+            -1,
+            &disciplineStatement,
+            nullptr
+        ) != SQLITE_OK) {
+        return DatabaseResult::Error;
+    }
+
+    for (const string& discipline : disciplines) {
+        sqlite3_reset(disciplineStatement);
+        sqlite3_clear_bindings(disciplineStatement);
+
+        int result = sqlite3_bind_int(disciplineStatement, 1, userId);
+
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_int(
+                disciplineStatement,
+                2,
+                workoutTemplateId
+            );
+        }
+
+        if (result != SQLITE_OK ||
+            !bindWorkoutText(disciplineStatement, 3, discipline) ||
+            sqlite3_step(disciplineStatement) != SQLITE_DONE) {
+            int errorCode = sqlite3_errcode(db);
+            sqlite3_finalize(disciplineStatement);
+            return errorCode == SQLITE_CONSTRAINT
+                ? DatabaseResult::Conflict
+                : DatabaseResult::Error;
+        }
+    }
+
+    sqlite3_finalize(disciplineStatement);
+
+    const char* roundSql =
+        "INSERT INTO combat_sports_workout_rounds ("
+        "user_id, workout_template_id, round_order, name, description"
+        ") VALUES (?, ?, ?, ?, ?);";
+
+    const char* activitySql =
+        "INSERT INTO combat_sports_workout_activities ("
+        "user_id, workout_template_id, workout_round_id, activity_order, "
+        "activity_type, technique_id, combination_id, drill_id, "
+        "name_snapshot, instructions_snapshot, target_type, target_value, "
+        "target_sets, rest_after_seconds"
+        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+
+    for (size_t roundIndex = 0; roundIndex < rounds.size(); roundIndex++) {
+        sqlite3_stmt* roundStatement = nullptr;
+
+        if (sqlite3_prepare_v2(
+                db,
+                roundSql,
+                -1,
+                &roundStatement,
+                nullptr
+            ) != SQLITE_OK) {
+            return DatabaseResult::Error;
+        }
+
+        const CombatSportsWorkoutRoundInput& round = rounds[roundIndex];
+
+        int result = sqlite3_bind_int(roundStatement, 1, userId);
+
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_int(
+                roundStatement,
+                2,
+                workoutTemplateId
+            );
+        }
+
+        if (result == SQLITE_OK) {
+            result = sqlite3_bind_int(
+                roundStatement,
+                3,
+                static_cast<int>(roundIndex) + 1
+            );
+        }
+
+        if (result != SQLITE_OK ||
+            !bindWorkoutText(roundStatement, 4, round.name) ||
+            !bindWorkoutText(roundStatement, 5, round.description) ||
+            sqlite3_step(roundStatement) != SQLITE_DONE) {
+            int errorCode = sqlite3_errcode(db);
+            sqlite3_finalize(roundStatement);
+            return errorCode == SQLITE_CONSTRAINT
+                ? DatabaseResult::Conflict
+                : DatabaseResult::Error;
+        }
+
+        sqlite3_finalize(roundStatement);
+
+        int workoutRoundId = static_cast<int>(sqlite3_last_insert_rowid(db));
+
+        for (size_t activityIndex = 0;
+             activityIndex < round.activities.size();
+             activityIndex++) {
+            const CombatSportsWorkoutActivityInput& activity =
+                round.activities[activityIndex];
+
+            DatabaseResult referenceResult = validateWorkoutLibraryReference(
+                db,
+                userId,
+                disciplines,
+                activity
+            );
+
+            if (referenceResult != DatabaseResult::Success) {
+                return referenceResult;
+            }
+
+            sqlite3_stmt* activityStatement = nullptr;
+
+            if (sqlite3_prepare_v2(
+                    db,
+                    activitySql,
+                    -1,
+                    &activityStatement,
+                    nullptr
+                ) != SQLITE_OK) {
+                return DatabaseResult::Error;
+            }
+
+            result = sqlite3_bind_int(activityStatement, 1, userId);
+            result = result == SQLITE_OK
+                ? sqlite3_bind_int(
+                    activityStatement,
+                    2,
+                    workoutTemplateId
+                )
+                : result;
+            result = result == SQLITE_OK
+                ? sqlite3_bind_int(activityStatement, 3, workoutRoundId)
+                : result;
+            result = result == SQLITE_OK
+                ? sqlite3_bind_int(
+                    activityStatement,
+                    4,
+                    static_cast<int>(activityIndex) + 1
+                )
+                : result;
+
+            bool textBound =
+                result == SQLITE_OK &&
+                bindWorkoutText(
+                    activityStatement,
+                    5,
+                    activity.activityType
+                );
+
+            auto bindOptionalId = [&](int index, const optional<int>& value) {
+                return value.has_value()
+                    ? sqlite3_bind_int(activityStatement, index, value.value())
+                    : sqlite3_bind_null(activityStatement, index);
+            };
+
+            if (textBound) {
+                result = bindOptionalId(6, activity.techniqueId);
+            }
+            if (result == SQLITE_OK) {
+                result = bindOptionalId(7, activity.combinationId);
+            }
+            if (result == SQLITE_OK) {
+                result = bindOptionalId(8, activity.drillId);
+            }
+
+            textBound = result == SQLITE_OK &&
+                bindWorkoutText(
+                    activityStatement,
+                    9,
+                    activity.nameSnapshot
+                ) &&
+                bindWorkoutText(
+                    activityStatement,
+                    10,
+                    activity.instructionsSnapshot
+                ) &&
+                bindWorkoutText(
+                    activityStatement,
+                    11,
+                    activity.targetType
+                );
+
+            if (textBound) {
+                result = sqlite3_bind_int(
+                    activityStatement,
+                    12,
+                    activity.targetValue
+                );
+            }
+            if (result == SQLITE_OK) {
+                result = sqlite3_bind_int(
+                    activityStatement,
+                    13,
+                    activity.targetSets
+                );
+            }
+            if (result == SQLITE_OK) {
+                result = sqlite3_bind_int(
+                    activityStatement,
+                    14,
+                    activity.restAfterSeconds
+                );
+            }
+
+            if (result != SQLITE_OK ||
+                !textBound ||
+                sqlite3_step(activityStatement) != SQLITE_DONE) {
+                int errorCode = sqlite3_errcode(db);
+                sqlite3_finalize(activityStatement);
+                return errorCode == SQLITE_CONSTRAINT
+                    ? DatabaseResult::Conflict
+                    : DatabaseResult::Error;
+            }
+
+            sqlite3_finalize(activityStatement);
+        }
+    }
+
+    return DatabaseResult::Success;
+}
+
+optional<int> readOptionalWorkoutInteger(sqlite3_stmt* statement, int column) {
+    if (sqlite3_column_type(statement, column) == SQLITE_NULL) {
+        return nullopt;
+    }
+
+    return sqlite3_column_int(statement, column);
+}
+
+string readWorkoutText(sqlite3_stmt* statement, int column) {
+    const unsigned char* value = sqlite3_column_text(statement, column);
+    return value == nullptr ? "" : reinterpret_cast<const char*>(value);
+}
+
+} // namespace
+
+DatabaseResult Database::createCombatSportsWorkoutTemplate(
+    int userId,
+    const string& name,
+    const string& description,
+    const vector<string>& disciplines,
+    const vector<CombatSportsWorkoutRoundInput>& rounds,
+    int& workoutTemplateId
+) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
+    if (!validateWorkoutStructure(name, disciplines, rounds)) {
+        return DatabaseResult::Conflict;
+    }
+
+    if (!beginTransaction()) {
+        return DatabaseResult::Error;
+    }
+
+    const char* sql =
+        "INSERT INTO combat_sports_workout_templates ("
+        "user_id, name, description) VALUES (?, ?, ?);";
+
+    sqlite3_stmt* statement = nullptr;
+
+    if (sqlite3_prepare_v2(db, sql, -1, &statement, nullptr) != SQLITE_OK ||
+        sqlite3_bind_int(statement, 1, userId) != SQLITE_OK ||
+        !bindText(statement, 2, name) ||
+        !bindText(statement, 3, description)) {
+        sqlite3_finalize(statement);
+        rollbackTransaction();
+        return DatabaseResult::Error;
+    }
+
+    int result = sqlite3_step(statement);
+    sqlite3_finalize(statement);
+
+    if (result != SQLITE_DONE) {
+        DatabaseResult operationResult = result == SQLITE_CONSTRAINT
+            ? DatabaseResult::Conflict
+            : DatabaseResult::Error;
+        rollbackTransaction();
+        return operationResult;
+    }
+
+    int newTemplateId = static_cast<int>(sqlite3_last_insert_rowid(db));
+
+    DatabaseResult childrenResult = insertWorkoutChildren(
+        db,
+        newTemplateId,
+        userId,
+        disciplines,
+        rounds
+    );
+
+    if (childrenResult != DatabaseResult::Success) {
+        rollbackTransaction();
+        return childrenResult;
+    }
+
+    if (!commitTransaction()) {
+        rollbackTransaction();
+        return DatabaseResult::Error;
+    }
+
+    workoutTemplateId = newTemplateId;
+    return DatabaseResult::Success;
+}
+
+DatabaseResult Database::getCombatSportsWorkoutTemplate(
+    int workoutTemplateId,
+    int userId,
+    CombatSportsWorkoutTemplate& workoutTemplate
+) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
+    const char* templateSql =
+        "SELECT id, user_id, name, description, created_at, updated_at "
+        "FROM combat_sports_workout_templates "
+        "WHERE id = ? AND user_id = ?;";
+
+    sqlite3_stmt* statement = nullptr;
+
+    if (sqlite3_prepare_v2(
+            db,
+            templateSql,
+            -1,
+            &statement,
+            nullptr
+        ) != SQLITE_OK ||
+        sqlite3_bind_int(statement, 1, workoutTemplateId) != SQLITE_OK ||
+        sqlite3_bind_int(statement, 2, userId) != SQLITE_OK) {
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    int result = sqlite3_step(statement);
+
+    if (result != SQLITE_ROW) {
+        sqlite3_finalize(statement);
+        return result == SQLITE_DONE
+            ? DatabaseResult::NotFound
+            : DatabaseResult::Error;
+    }
+
+    workoutTemplate = {};
+    workoutTemplate.id = sqlite3_column_int(statement, 0);
+    workoutTemplate.userId = sqlite3_column_int(statement, 1);
+    workoutTemplate.name = readWorkoutText(statement, 2);
+    workoutTemplate.description = readWorkoutText(statement, 3);
+    workoutTemplate.createdAt = readWorkoutText(statement, 4);
+    workoutTemplate.updatedAt = readWorkoutText(statement, 5);
+    sqlite3_finalize(statement);
+
+    const char* disciplineSql =
+        "SELECT discipline FROM combat_sports_workout_disciplines "
+        "WHERE workout_template_id = ? AND user_id = ? "
+        "ORDER BY id;";
+
+    if (sqlite3_prepare_v2(
+            db,
+            disciplineSql,
+            -1,
+            &statement,
+            nullptr
+        ) != SQLITE_OK ||
+        sqlite3_bind_int(statement, 1, workoutTemplateId) != SQLITE_OK ||
+        sqlite3_bind_int(statement, 2, userId) != SQLITE_OK) {
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    while ((result = sqlite3_step(statement)) == SQLITE_ROW) {
+        workoutTemplate.disciplines.push_back(readWorkoutText(statement, 0));
+    }
+
+    sqlite3_finalize(statement);
+
+    if (result != SQLITE_DONE) {
+        return DatabaseResult::Error;
+    }
+
+    const char* nestedSql =
+        "SELECT r.id, r.user_id, r.workout_template_id, r.round_order, "
+        "r.name, r.description, r.created_at, r.updated_at, "
+        "a.id, a.activity_order, a.activity_type, a.technique_id, "
+        "a.combination_id, a.drill_id, a.name_snapshot, "
+        "a.instructions_snapshot, a.target_type, a.target_value, "
+        "a.target_sets, a.rest_after_seconds, a.created_at, a.updated_at "
+        "FROM combat_sports_workout_rounds r "
+        "LEFT JOIN combat_sports_workout_activities a "
+        "ON a.workout_round_id = r.id AND a.user_id = r.user_id "
+        "WHERE r.workout_template_id = ? AND r.user_id = ? "
+        "ORDER BY r.round_order, a.activity_order;";
+
+    if (sqlite3_prepare_v2(db, nestedSql, -1, &statement, nullptr) !=
+            SQLITE_OK ||
+        sqlite3_bind_int(statement, 1, workoutTemplateId) != SQLITE_OK ||
+        sqlite3_bind_int(statement, 2, userId) != SQLITE_OK) {
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    int currentRoundId = -1;
+
+    while ((result = sqlite3_step(statement)) == SQLITE_ROW) {
+        int rowRoundId = sqlite3_column_int(statement, 0);
+
+        if (rowRoundId != currentRoundId) {
+            CombatSportsWorkoutRound round{};
+            round.id = rowRoundId;
+            round.userId = sqlite3_column_int(statement, 1);
+            round.workoutTemplateId = sqlite3_column_int(statement, 2);
+            round.roundOrder = sqlite3_column_int(statement, 3);
+            round.name = readWorkoutText(statement, 4);
+            round.description = readWorkoutText(statement, 5);
+            round.createdAt = readWorkoutText(statement, 6);
+            round.updatedAt = readWorkoutText(statement, 7);
+            workoutTemplate.rounds.push_back(round);
+            currentRoundId = rowRoundId;
+        }
+
+        if (sqlite3_column_type(statement, 8) != SQLITE_NULL) {
+            CombatSportsWorkoutActivity activity{};
+            activity.id = sqlite3_column_int(statement, 8);
+            activity.userId = userId;
+            activity.workoutTemplateId = workoutTemplateId;
+            activity.workoutRoundId = rowRoundId;
+            activity.activityOrder = sqlite3_column_int(statement, 9);
+            activity.activityType = readWorkoutText(statement, 10);
+            activity.techniqueId = readOptionalWorkoutInteger(statement, 11);
+            activity.combinationId = readOptionalWorkoutInteger(statement, 12);
+            activity.drillId = readOptionalWorkoutInteger(statement, 13);
+            activity.nameSnapshot = readWorkoutText(statement, 14);
+            activity.instructionsSnapshot = readWorkoutText(statement, 15);
+            activity.targetType = readWorkoutText(statement, 16);
+            activity.targetValue = sqlite3_column_int(statement, 17);
+            activity.targetSets = sqlite3_column_int(statement, 18);
+            activity.restAfterSeconds = sqlite3_column_int(statement, 19);
+            activity.createdAt = readWorkoutText(statement, 20);
+            activity.updatedAt = readWorkoutText(statement, 21);
+            workoutTemplate.rounds.back().activities.push_back(activity);
+        }
+    }
+
+    sqlite3_finalize(statement);
+    return result == SQLITE_DONE
+        ? DatabaseResult::Success
+        : DatabaseResult::Error;
+}
+
+DatabaseResult Database::getCombatSportsWorkoutTemplates(
+    int userId,
+    vector<CombatSportsWorkoutTemplate>& workoutTemplates
+) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+    workoutTemplates.clear();
+
+    const char* sql =
+        "SELECT id FROM combat_sports_workout_templates "
+        "WHERE user_id = ? ORDER BY updated_at DESC, id DESC;";
+
+    sqlite3_stmt* statement = nullptr;
+
+    if (sqlite3_prepare_v2(db, sql, -1, &statement, nullptr) != SQLITE_OK ||
+        sqlite3_bind_int(statement, 1, userId) != SQLITE_OK) {
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    vector<int> templateIds;
+    int result = SQLITE_OK;
+
+    while ((result = sqlite3_step(statement)) == SQLITE_ROW) {
+        templateIds.push_back(sqlite3_column_int(statement, 0));
+    }
+
+    sqlite3_finalize(statement);
+
+    if (result != SQLITE_DONE) {
+        return DatabaseResult::Error;
+    }
+
+    for (int templateId : templateIds) {
+        CombatSportsWorkoutTemplate workoutTemplate{};
+        DatabaseResult templateResult = getCombatSportsWorkoutTemplate(
+            templateId,
+            userId,
+            workoutTemplate
+        );
+
+        if (templateResult != DatabaseResult::Success) {
+            return templateResult;
+        }
+
+        workoutTemplates.push_back(workoutTemplate);
+    }
+
+    return DatabaseResult::Success;
+}
+
+DatabaseResult Database::updateCombatSportsWorkoutTemplate(
+    int workoutTemplateId,
+    int userId,
+    const string& name,
+    const string& description,
+    const vector<string>& disciplines,
+    const vector<CombatSportsWorkoutRoundInput>& rounds
+) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
+    if (!validateWorkoutStructure(name, disciplines, rounds)) {
+        return DatabaseResult::Conflict;
+    }
+
+    if (!beginTransaction()) {
+        return DatabaseResult::Error;
+    }
+
+    const char* updateSql =
+        "UPDATE combat_sports_workout_templates "
+        "SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP "
+        "WHERE id = ? AND user_id = ?;";
+
+    sqlite3_stmt* statement = nullptr;
+
+    if (sqlite3_prepare_v2(db, updateSql, -1, &statement, nullptr) !=
+            SQLITE_OK ||
+        !bindText(statement, 1, name) ||
+        !bindText(statement, 2, description) ||
+        sqlite3_bind_int(statement, 3, workoutTemplateId) != SQLITE_OK ||
+        sqlite3_bind_int(statement, 4, userId) != SQLITE_OK) {
+        sqlite3_finalize(statement);
+        rollbackTransaction();
+        return DatabaseResult::Error;
+    }
+
+    int result = sqlite3_step(statement);
+    int changedRows = sqlite3_changes(db);
+    sqlite3_finalize(statement);
+
+    if (result != SQLITE_DONE) {
+        DatabaseResult operationResult = result == SQLITE_CONSTRAINT
+            ? DatabaseResult::Conflict
+            : DatabaseResult::Error;
+        rollbackTransaction();
+        return operationResult;
+    }
+
+    if (changedRows == 0) {
+        rollbackTransaction();
+        return DatabaseResult::NotFound;
+    }
+
+    // Rounds cascade to their activities. Replacing nested rows keeps the
+    // submitted order authoritative and avoids partially stale structures.
+    const char* deleteRoundsSql =
+        "DELETE FROM combat_sports_workout_rounds "
+        "WHERE workout_template_id = ? AND user_id = ?;";
+    const char* deleteDisciplinesSql =
+        "DELETE FROM combat_sports_workout_disciplines "
+        "WHERE workout_template_id = ? AND user_id = ?;";
+
+    for (const char* deleteSql : {deleteRoundsSql, deleteDisciplinesSql}) {
+        if (sqlite3_prepare_v2(
+                db,
+                deleteSql,
+                -1,
+                &statement,
+                nullptr
+            ) != SQLITE_OK ||
+            sqlite3_bind_int(statement, 1, workoutTemplateId) != SQLITE_OK ||
+            sqlite3_bind_int(statement, 2, userId) != SQLITE_OK ||
+            sqlite3_step(statement) != SQLITE_DONE) {
+            sqlite3_finalize(statement);
+            rollbackTransaction();
+            return DatabaseResult::Error;
+        }
+
+        sqlite3_finalize(statement);
+        statement = nullptr;
+    }
+
+    DatabaseResult childrenResult = insertWorkoutChildren(
+        db,
+        workoutTemplateId,
+        userId,
+        disciplines,
+        rounds
+    );
+
+    if (childrenResult != DatabaseResult::Success) {
+        rollbackTransaction();
+        return childrenResult;
+    }
+
+    if (!commitTransaction()) {
+        rollbackTransaction();
+        return DatabaseResult::Error;
+    }
+
+    return DatabaseResult::Success;
+}
+
+DatabaseResult Database::duplicateCombatSportsWorkoutTemplate(
+    int workoutTemplateId,
+    int userId,
+    const string& duplicatedName,
+    int& duplicatedWorkoutTemplateId
+) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
+    CombatSportsWorkoutTemplate source{};
+    DatabaseResult sourceResult = getCombatSportsWorkoutTemplate(
+        workoutTemplateId,
+        userId,
+        source
+    );
+
+    if (sourceResult != DatabaseResult::Success) {
+        return sourceResult;
+    }
+
+    vector<CombatSportsWorkoutRoundInput> roundInputs;
+
+    for (const CombatSportsWorkoutRound& round : source.rounds) {
+        CombatSportsWorkoutRoundInput roundInput{};
+        roundInput.name = round.name;
+        roundInput.description = round.description;
+
+        for (const CombatSportsWorkoutActivity& activity : round.activities) {
+            roundInput.activities.push_back({
+                activity.activityType,
+                activity.techniqueId,
+                activity.combinationId,
+                activity.drillId,
+                activity.nameSnapshot,
+                activity.instructionsSnapshot,
+                activity.targetType,
+                activity.targetValue,
+                activity.targetSets,
+                activity.restAfterSeconds
+            });
+        }
+
+        roundInputs.push_back(roundInput);
+    }
+
+    // Creation performs the copy as one transaction and revalidates every
+    // library reference in case source content changed since it was saved.
+    return createCombatSportsWorkoutTemplate(
+        userId,
+        duplicatedName,
+        source.description,
+        source.disciplines,
+        roundInputs,
+        duplicatedWorkoutTemplateId
+    );
+}
+
+DatabaseResult Database::deleteCombatSportsWorkoutTemplate(
+    int workoutTemplateId,
+    int userId
+) {
+    lock_guard<recursive_mutex> lock(databaseMutex);
+
+    const char* sql =
+        "DELETE FROM combat_sports_workout_templates "
+        "WHERE id = ? AND user_id = ?;";
+
+    sqlite3_stmt* statement = nullptr;
+
+    if (sqlite3_prepare_v2(db, sql, -1, &statement, nullptr) != SQLITE_OK ||
+        sqlite3_bind_int(statement, 1, workoutTemplateId) != SQLITE_OK ||
+        sqlite3_bind_int(statement, 2, userId) != SQLITE_OK) {
+        sqlite3_finalize(statement);
+        return DatabaseResult::Error;
+    }
+
+    int result = sqlite3_step(statement);
+    int changedRows = sqlite3_changes(db);
+    sqlite3_finalize(statement);
+
+    if (result == SQLITE_DONE) {
+        return changedRows == 0
+            ? DatabaseResult::NotFound
+            : DatabaseResult::Success;
+    }
+
+    return result == SQLITE_CONSTRAINT
+        ? DatabaseResult::Conflict
+        : DatabaseResult::Error;
+}

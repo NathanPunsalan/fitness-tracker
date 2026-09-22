@@ -112,6 +112,75 @@ struct CombatSportsDrill {
     std::vector<CombatSportsDrillItem> items;
 };
 
+// Represents one activity supplied when creating or updating a workout.
+// Library references are optional because built-in and custom activities do
+// not point to a technique, combination, or drill.
+struct CombatSportsWorkoutActivityInput {
+    std::string activityType;
+    std::optional<int> techniqueId;
+    std::optional<int> combinationId;
+    std::optional<int> drillId;
+    std::string nameSnapshot;
+    std::string instructionsSnapshot;
+    std::string targetType;
+    int targetValue;
+    int targetSets;
+    int restAfterSeconds;
+};
+
+// Represents one ordered round supplied with a complete workout template.
+struct CombatSportsWorkoutRoundInput {
+    std::string name;
+    std::string description;
+    std::vector<CombatSportsWorkoutActivityInput> activities;
+};
+
+// Represents one stored activity in a reusable workout template.
+struct CombatSportsWorkoutActivity {
+    int id;
+    int userId;
+    int workoutTemplateId;
+    int workoutRoundId;
+    int activityOrder;
+    std::string activityType;
+    std::optional<int> techniqueId;
+    std::optional<int> combinationId;
+    std::optional<int> drillId;
+    std::string nameSnapshot;
+    std::string instructionsSnapshot;
+    std::string targetType;
+    int targetValue;
+    int targetSets;
+    int restAfterSeconds;
+    std::string createdAt;
+    std::string updatedAt;
+};
+
+// Represents one stored round and its ordered activities.
+struct CombatSportsWorkoutRound {
+    int id;
+    int userId;
+    int workoutTemplateId;
+    int roundOrder;
+    std::string name;
+    std::string description;
+    std::string createdAt;
+    std::string updatedAt;
+    std::vector<CombatSportsWorkoutActivity> activities;
+};
+
+// Represents a complete reusable workout template.
+struct CombatSportsWorkoutTemplate {
+    int id;
+    int userId;
+    std::string name;
+    std::string description;
+    std::string createdAt;
+    std::string updatedAt;
+    std::vector<std::string> disciplines;
+    std::vector<CombatSportsWorkoutRound> rounds;
+};
+
 // Handles the SQLite database connection for the app
 class Database {
 private:
@@ -357,6 +426,53 @@ public:
     // Deletes a drill belonging to a specific user
     DatabaseResult deleteCombatSportsDrill(
         int drillId,
+        int userId
+    );
+
+    // Creates a complete workout template as one transaction.
+    DatabaseResult createCombatSportsWorkoutTemplate(
+        int userId,
+        const std::string& name,
+        const std::string& description,
+        const std::vector<std::string>& disciplines,
+        const std::vector<CombatSportsWorkoutRoundInput>& rounds,
+        int& workoutTemplateId
+    );
+
+    // Retrieves one template with its disciplines, rounds, and activities.
+    DatabaseResult getCombatSportsWorkoutTemplate(
+        int workoutTemplateId,
+        int userId,
+        CombatSportsWorkoutTemplate& workoutTemplate
+    );
+
+    // Retrieves every workout template belonging to a user.
+    DatabaseResult getCombatSportsWorkoutTemplates(
+        int userId,
+        std::vector<CombatSportsWorkoutTemplate>& workoutTemplates
+    );
+
+    // Replaces a template's complete nested structure transactionally.
+    DatabaseResult updateCombatSportsWorkoutTemplate(
+        int workoutTemplateId,
+        int userId,
+        const std::string& name,
+        const std::string& description,
+        const std::vector<std::string>& disciplines,
+        const std::vector<CombatSportsWorkoutRoundInput>& rounds
+    );
+
+    // Copies a complete template under a new user-owned name.
+    DatabaseResult duplicateCombatSportsWorkoutTemplate(
+        int workoutTemplateId,
+        int userId,
+        const std::string& duplicatedName,
+        int& duplicatedWorkoutTemplateId
+    );
+
+    // Deletes one user-owned template without deleting completed snapshots.
+    DatabaseResult deleteCombatSportsWorkoutTemplate(
+        int workoutTemplateId,
         int userId
     );
 };
