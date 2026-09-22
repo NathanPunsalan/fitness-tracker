@@ -1,6 +1,7 @@
 #include "routes.h"
 #include "auth.h"
 #include "combat_sports_content_routes.h"
+#include "combat_sports_completed_workout_routes.h"
 #include "combat_sports_workout_routes.h"
 #include "validation.h"
 
@@ -1132,6 +1133,10 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
     // Workout-template routes are kept separate because their nested request
     // parsing and response serialization are substantially larger.
     registerCombatSportsWorkoutRoutes(app, database);
+
+    // Completed-workout routes accept the reviewed results produced by either
+    // Training Mode or manual workout recording.
+    registerCombatSportsCompletedWorkoutRoutes(app, database);
 
     // Health route used to verify that the web server is responding correctly
     CROW_ROUTE(app, "/api/health")([]() {
