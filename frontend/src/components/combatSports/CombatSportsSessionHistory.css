@@ -1,6 +1,11 @@
 .combat-sports-history-card {
+    display: flex;
+    flex-direction: column;
+
     width: 100%;
+    height: 60rem;
     box-sizing: border-box;
+    overflow: hidden;
 }
 
 .combat-sports-history-card__header {
@@ -54,7 +59,32 @@
 .combat-sports-session-list {
     display: flex;
     flex-direction: column;
+    flex: 1 1 auto;
     gap: var(--space-md);
+
+    /* Keep a long history inside the card instead of extending the page. */
+    min-height: 0;
+    padding-right: var(--space-sm);
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+}
+
+.combat-sports-session-list::-webkit-scrollbar {
+    width: 0.625rem;
+}
+
+.combat-sports-session-list::-webkit-scrollbar-track {
+    background: var(--color-background);
+    border-radius: var(--radius-md);
+}
+
+.combat-sports-session-list::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: var(--radius-md);
+}
+
+.combat-sports-session-list::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-muted);
 }
 
 .combat-sports-session {
@@ -154,6 +184,12 @@
 
     .combat-sports-session__details {
         grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 64rem) {
+    .combat-sports-history-card {
+        height: 48rem;
     }
 }
 

@@ -5,6 +5,7 @@ import {
 } from "react";
 
 import CombatSportsSessionHistory from "../components/combatSports/CombatSportsSessionHistory";
+import CombatSportsContentManager from "../components/combatSports/CombatSportsContentManager";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import FeedbackMessage from "../components/ui/FeedbackMessage";
@@ -539,6 +540,10 @@ function CombatSports() {
                 onSessionDeleted={handleSessionDeleted}
                 editingSessionId={editingSessionId}
             />
+
+            <div className="combat-sports-content-area">
+                <CombatSportsContentManager />
+            </div>
         </div>
     );
 }
