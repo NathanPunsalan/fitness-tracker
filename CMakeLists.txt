@@ -14,6 +14,7 @@ add_executable(fitness_tracker
     src/database.cpp
     src/routes.cpp
     src/combat_sports_content_routes.cpp
+    src/combat_sports_workout_routes.cpp
     src/auth.cpp
     src/validation.cpp
 )

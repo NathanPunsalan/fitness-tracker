@@ -1,6 +1,7 @@
 #include "routes.h"
 #include "auth.h"
 #include "combat_sports_content_routes.h"
+#include "combat_sports_workout_routes.h"
 #include "validation.h"
 
 #include <string>
@@ -1127,6 +1128,10 @@ void registerRoutes(crow::SimpleApp& app, Database& database)
     // Keep reusable combat-sports content routes in a focused module so this
     // existing route registry does not become harder to maintain.
     registerCombatSportsContentRoutes(app, database);
+
+    // Workout-template routes are kept separate because their nested request
+    // parsing and response serialization are substantially larger.
+    registerCombatSportsWorkoutRoutes(app, database);
 
     // Health route used to verify that the web server is responding correctly
     CROW_ROUTE(app, "/api/health")([]() {
