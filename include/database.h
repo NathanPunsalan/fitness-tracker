@@ -181,6 +181,117 @@ struct CombatSportsWorkoutTemplate {
     std::vector<CombatSportsWorkoutRound> rounds;
 };
 
+// Represents an actual activity result supplied by Training Mode or manual
+// recording before the completed workout is saved.
+struct CombatSportsCompletedActivityInput {
+    std::optional<int> sourceWorkoutActivityId;
+    std::string activityType;
+    std::optional<int> techniqueId;
+    std::optional<int> combinationId;
+    std::optional<int> drillId;
+    std::string nameSnapshot;
+    std::string instructionsSnapshot;
+    std::string targetType;
+    std::optional<int> plannedValue;
+    std::optional<int> plannedSets;
+    int completedValue;
+    int completedSets;
+    std::optional<int> actualDurationSeconds;
+    std::string status;
+    bool wasUnplanned;
+    std::string notes;
+};
+
+struct CombatSportsCompletedRoundInput {
+    std::optional<int> sourceWorkoutRoundId;
+    std::string nameSnapshot;
+    std::string descriptionSnapshot;
+    std::vector<CombatSportsCompletedActivityInput> activities;
+};
+
+struct CombatSportsCompletedWorkoutInput {
+    std::optional<int> workoutTemplateId;
+    int combatSportsSessionId;
+    std::string workoutNameSnapshot;
+    std::string workoutDescriptionSnapshot;
+    std::string recordingMethod;
+    std::string startedAt;
+    std::string completedAt;
+    int actualDurationSeconds;
+    bool stoppedEarly;
+    std::string notes;
+    std::vector<CombatSportsCompletedRoundInput> rounds;
+};
+
+struct CombatSportsCompletedActivity {
+    int id;
+    int userId;
+    int completedWorkoutId;
+    int completedWorkoutRoundId;
+    std::optional<int> sourceWorkoutActivityId;
+    int activityOrder;
+    std::string activityType;
+    std::optional<int> techniqueId;
+    std::optional<int> combinationId;
+    std::optional<int> drillId;
+    std::string nameSnapshot;
+    std::string instructionsSnapshot;
+    std::string targetType;
+    std::optional<int> plannedValue;
+    std::optional<int> plannedSets;
+    int completedValue;
+    int completedSets;
+    std::optional<int> actualDurationSeconds;
+    std::string status;
+    bool wasUnplanned;
+    std::string notes;
+    std::string createdAt;
+};
+
+struct CombatSportsCompletedRound {
+    int id;
+    int userId;
+    int completedWorkoutId;
+    std::optional<int> sourceWorkoutRoundId;
+    int roundOrder;
+    std::string nameSnapshot;
+    std::string descriptionSnapshot;
+    std::string status;
+    std::string createdAt;
+    std::vector<CombatSportsCompletedActivity> activities;
+};
+
+struct CombatSportsCompletedTechniqueTotal {
+    int id;
+    int userId;
+    int completedWorkoutId;
+    std::optional<int> techniqueId;
+    std::string techniqueNameSnapshot;
+    std::string techniqueCategorySnapshot;
+    int totalRepetitions;
+    std::string createdAt;
+};
+
+struct CombatSportsCompletedWorkout {
+    int id;
+    int userId;
+    std::optional<int> workoutTemplateId;
+    int combatSportsSessionId;
+    std::string workoutNameSnapshot;
+    std::string workoutDescriptionSnapshot;
+    std::string recordingMethod;
+    std::string startedAt;
+    std::string completedAt;
+    std::optional<int> plannedDurationSeconds;
+    int actualDurationSeconds;
+    bool stoppedEarly;
+    std::string notes;
+    std::string createdAt;
+    std::string updatedAt;
+    std::vector<CombatSportsCompletedRound> rounds;
+    std::vector<CombatSportsCompletedTechniqueTotal> techniqueTotals;
+};
+
 // Handles the SQLite database connection for the app
 class Database {
 private:
@@ -474,6 +585,31 @@ public:
     DatabaseResult deleteCombatSportsWorkoutTemplate(
         int workoutTemplateId,
         int userId
+    );
+
+    // Saves a confirmed workout result, its nested activity snapshots, and
+    // calculated technique totals as one transaction.
+    DatabaseResult createCombatSportsCompletedWorkout(
+        int userId,
+        const CombatSportsCompletedWorkoutInput& input,
+        int& completedWorkoutId
+    );
+
+    DatabaseResult getCombatSportsCompletedWorkout(
+        int completedWorkoutId,
+        int userId,
+        CombatSportsCompletedWorkout& completedWorkout
+    );
+
+    DatabaseResult getCombatSportsCompletedWorkoutBySession(
+        int combatSportsSessionId,
+        int userId,
+        CombatSportsCompletedWorkout& completedWorkout
+    );
+
+    DatabaseResult getCombatSportsCompletedWorkouts(
+        int userId,
+        std::vector<CombatSportsCompletedWorkout>& completedWorkouts
     );
 };
 
