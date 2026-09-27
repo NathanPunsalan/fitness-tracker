@@ -1,0 +1,103 @@
+.training-review {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    padding: clamp(1rem, 3vw, 3rem);
+    box-sizing: border-box;
+    background: rgba(15, 23, 42, 0.98);
+    overflow-y: auto;
+}
+
+.training-review__panel {
+    width: min(70rem, 100%);
+    margin: 0 auto;
+}
+
+.training-review__header,
+.training-review__activity-heading,
+.training-review__actions {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-lg);
+}
+
+.training-review__header {
+    margin-bottom: var(--space-xl);
+}
+
+.training-review__header h1,
+.training-review__activity h2 {
+    margin: var(--space-xs) 0;
+}
+
+.training-review__header p,
+.training-review__eyebrow,
+.training-review__activity-heading span,
+.training-review__summary span {
+    color: var(--color-text-muted);
+}
+
+.training-review__eyebrow {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-bold);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.training-review__summary {
+    display: grid;
+    gap: var(--space-xs);
+    text-align: right;
+}
+
+.training-review__summary strong {
+    color: var(--color-primary);
+    font-size: var(--font-size-2xl);
+}
+
+.training-review__activities {
+    display: grid;
+    gap: var(--space-md);
+    margin: var(--space-lg) 0;
+}
+
+.training-review__activity {
+    padding: var(--space-lg);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+}
+
+.training-review__activity-heading .ui-form-field {
+    min-width: 11rem;
+}
+
+.training-review__values {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-md);
+    margin-top: var(--space-md);
+}
+
+.training-review__actions {
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: var(--space-xl);
+    padding-bottom: var(--space-xl);
+}
+
+@media (max-width: 44rem) {
+    .training-review__header,
+    .training-review__activity-heading {
+        flex-direction: column;
+    }
+
+    .training-review__summary {
+        text-align: left;
+    }
+
+    .training-review__values {
+        grid-template-columns: 1fr;
+    }
+}

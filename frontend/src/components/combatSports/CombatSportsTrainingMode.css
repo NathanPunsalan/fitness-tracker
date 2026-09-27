@@ -1,0 +1,118 @@
+.training-mode {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    min-height: 100vh;
+    padding: clamp(1rem, 3vw, 3rem);
+    box-sizing: border-box;
+    color: var(--color-text);
+    background:
+        radial-gradient(circle at top, #1e293b 0, #0f172a 55%);
+    overflow-y: auto;
+}
+
+.training-mode__header,
+.training-mode__controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-lg);
+}
+
+.training-mode__header h1,
+.training-mode__current h2,
+.training-mode__next h3 {
+    margin: var(--space-xs) 0 0;
+}
+
+.training-mode__eyebrow,
+.training-mode__label,
+.training-mode__progress span,
+.training-mode__target-note {
+    color: var(--color-text-muted);
+}
+
+.training-mode__eyebrow,
+.training-mode__label {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-bold);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.training-mode__progress {
+    display: grid;
+    gap: var(--space-xs);
+    text-align: right;
+    font-weight: var(--font-weight-semibold);
+}
+
+.training-mode__main {
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: var(--space-xl);
+    width: min(70rem, 100%);
+    margin: 0 auto;
+    text-align: center;
+}
+
+.training-mode__current h2 {
+    font-size: clamp(2rem, 6vw, 5rem);
+}
+
+.training-mode__current p {
+    color: var(--color-text-muted);
+    font-size: clamp(1rem, 2vw, 1.5rem);
+}
+
+.training-mode__timer {
+    margin: clamp(1rem, 3vh, 2rem) 0;
+    color: var(--color-primary);
+    font-size: clamp(5rem, 19vw, 14rem);
+    font-weight: var(--font-weight-bold);
+    font-variant-numeric: tabular-nums;
+    line-height: 0.9;
+}
+
+.training-mode__next {
+    min-height: 6rem;
+    padding: var(--space-md) var(--space-xl);
+    border: 1px solid transparent;
+    border-radius: var(--radius-lg);
+    opacity: 0;
+    transition: opacity 0.2s ease, border-color 0.2s ease;
+}
+
+.training-mode__next--visible {
+    border-color: var(--color-warning);
+    background: rgba(245, 158, 11, 0.08);
+    opacity: 1;
+}
+
+.training-mode__next p {
+    margin: var(--space-xs) 0 0;
+    color: var(--color-text-muted);
+}
+
+.training-mode__controls {
+    justify-content: center;
+    flex-wrap: wrap;
+    padding-top: var(--space-lg);
+}
+
+@media (max-width: 44rem) {
+    .training-mode__header {
+        align-items: flex-start;
+    }
+
+    .training-mode__progress {
+        font-size: var(--font-size-sm);
+    }
+
+    .training-mode__controls .ui-button {
+        flex: 1 1 8rem;
+    }
+}

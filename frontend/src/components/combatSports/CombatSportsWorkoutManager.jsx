@@ -5,9 +5,13 @@ import FeedbackMessage from "../ui/FeedbackMessage";
 import LoadingIndicator from "../ui/LoadingIndicator";
 import WorkoutTemplateCard from "./WorkoutTemplateCard";
 import WorkoutTemplateForm from "./WorkoutTemplateForm";
+import CombatSportsTrainingMode from "./CombatSportsTrainingMode";
+import TrainingModeReview from "./TrainingModeReview";
 
 import {
     createCombatSportsWorkout,
+    createCombatSportsCompletedWorkout,
+    createCombatSportsSession,
     deleteCombatSportsWorkout,
     duplicateCombatSportsWorkout,
     getCombatSportsCombinations,
@@ -28,18 +32,134 @@ function replaceOrAdd(workouts, savedWorkout) {
         : [savedWorkout, ...workouts];
 }
 
-function CombatSportsWorkoutManager() {
+function CombatSportsWorkoutManager({ onSessionCreated }) {
     const [workouts, setWorkouts] = useState([]);
     const [techniques, setTechniques] = useState([]);
     const [combinations, setCombinations] = useState([]);
     const [drills, setDrills] = useState([]);
     const [editingWorkout, setEditingWorkout] = useState(null);
+    const [trainingWorkout, setTrainingWorkout] = useState(null);
+    const [trainingResult, setTrainingResult] = useState(null);
+    const [resultSaving, setResultSaving] = useState(false);
+    const [resultError, setResultError] = useState("");
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [busyAction, setBusyAction] = useState(null);
     const [message, setMessage] = useState("");
     const [messageType, setMessageType] = useState("info");
     const actionInProgress = useRef(false);
+    const pendingSessionRef = useRef(null);
+
+    function reviewTrainingResult(result) {
+        setTrainingWorkout(null);
+        setTrainingResult(result);
+        setResultError("");
+        pendingSessionRef.current = null;
+    }
+
+    async function saveTrainingResult(review) {
+        if (actionInProgress.current || !trainingResult) {
+            return;
+        }
+
+        actionInProgress.current = true;
+        setResultSaving(true);
+        setResultError("");
+
+        try {
+            let linkedSession = pendingSessionRef.current;
+            if (!linkedSession) {
+                const discipline = trainingResult.workout.disciplines[0];
+                if (!discipline) {
+                    setResultError("The workout needs at least one discipline.");
+                    return;
+                }
+
+                const sessionResult = await createCombatSportsSession({
+                    discipline,
+                    trainingType: trainingResult.workout.name,
+                    sessionDate: new Date().toLocaleDateString("en-CA"),
+                    durationMinutes: Math.max(
+                        1,
+                        Math.ceil(trainingResult.actualDurationSeconds / 60)
+                    ),
+                    recordingMethod: "training_mode",
+                    notes: review.notes
+                });
+
+                if (!sessionResult.success || !sessionResult.session) {
+                    setResultError(
+                        sessionResult.message || "Unable to create the session."
+                    );
+                    return;
+                }
+                linkedSession = sessionResult.session;
+                pendingSessionRef.current = linkedSession;
+            }
+
+            const rounds = trainingResult.workout.rounds.map((round) => ({
+                source_workout_round_id: round.id,
+                name: round.name || `Round ${round.round_order}`,
+                description: round.description || "",
+                activities: review.activities
+                    .filter((item) => item.activity.roundId === round.id)
+                    .map((item) => ({
+                        source_workout_activity_id: item.activity.id,
+                        activity_type: item.activity.activity_type,
+                        technique_id: item.activity.technique_id,
+                        combination_id: item.activity.combination_id,
+                        drill_id: item.activity.drill_id,
+                        name: item.activity.name,
+                        instructions: item.activity.instructions || "",
+                        target_type: item.activity.target_type,
+                        planned_value: Number(item.activity.target_value),
+                        planned_sets: Number(item.activity.target_sets),
+                        completed_value: Number(item.completedValue),
+                        completed_sets: Number(item.completedSets),
+                        actual_duration_seconds:
+                            item.actualDurationSeconds || null,
+                        status: item.status,
+                        was_unplanned: false,
+                        notes: ""
+                    }))
+            }));
+
+            const completedResult =
+                await createCombatSportsCompletedWorkout({
+                    workout_template_id: trainingResult.workout.id,
+                    combat_sports_session_id: linkedSession.id,
+                    workout_name: trainingResult.workout.name,
+                    workout_description:
+                        trainingResult.workout.description || "",
+                    recording_method: "training_mode",
+                    started_at: trainingResult.startedAt,
+                    completed_at: trainingResult.completedAt,
+                    actual_duration_seconds:
+                        trainingResult.actualDurationSeconds,
+                    stopped_early: trainingResult.stoppedEarly,
+                    notes: review.notes,
+                    rounds
+                });
+
+            if (!completedResult.success) {
+                setResultError(
+                    completedResult.message || "Unable to save workout result."
+                );
+                return;
+            }
+
+            onSessionCreated?.(linkedSession);
+            setTrainingResult(null);
+            pendingSessionRef.current = null;
+            setMessageType("success");
+            setMessage(`${trainingResult.workout.name} saved successfully.`);
+        } catch {
+            setResultError("Unable to save this workout. Please try again.");
+        } finally {
+            actionInProgress.current = false;
+            setResultSaving(false);
+        }
+    }
 
     useEffect(() => {
         let cancelled = false;
@@ -286,6 +406,7 @@ function CombatSportsWorkoutManager() {
                                         key={workout.id}
                                         workout={workout}
                                         busyAction={busyAction}
+                                        onStartTraining={setTrainingWorkout}
                                         onEdit={(selected) => {
                                             setEditingWorkout(selected);
                                             setMessage("");
@@ -298,6 +419,28 @@ function CombatSportsWorkoutManager() {
                         </div>
                     </div>
                 </>
+            )}
+
+            {trainingWorkout && (
+                <CombatSportsTrainingMode
+                    workout={trainingWorkout}
+                    onExit={() => setTrainingWorkout(null)}
+                    onReview={reviewTrainingResult}
+                />
+            )}
+
+            {trainingResult && (
+                <TrainingModeReview
+                    result={trainingResult}
+                    saving={resultSaving}
+                    error={resultError}
+                    onSave={saveTrainingResult}
+                    onDiscard={() => {
+                        setTrainingResult(null);
+                        setResultError("");
+                        pendingSessionRef.current = null;
+                    }}
+                />
             )}
         </Card>
     );

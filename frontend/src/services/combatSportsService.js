@@ -16,6 +16,8 @@ async function handleApiResponse(response) {
         drills: data.drills,
         workout: data.workout,
         workouts: data.workouts,
+        completedWorkout: data.completed_workout,
+        completedWorkouts: data.completed_workouts,
         count: data.count,
         deletedSessionId: data.deleted_session_id,
         deletedTechniqueId: data.deleted_technique_id,
@@ -297,5 +299,15 @@ export function deleteCombatSportsWorkout(workoutId) {
     return sendContentRequest(
         `/api/combat-sports/workouts/${workoutId}`,
         "DELETE"
+    );
+}
+
+// Saves the reviewed result produced by Training Mode. The caller builds the
+// nested snake_case payload because it mirrors the completed-workout API.
+export function createCombatSportsCompletedWorkout(values) {
+    return sendContentRequest(
+        "/api/combat-sports/completed-workouts",
+        "POST",
+        values
     );
 }

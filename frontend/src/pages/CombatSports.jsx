@@ -544,7 +544,17 @@ function CombatSports() {
 
             <div className="combat-sports-content-area">
                 <CombatSportsContentManager />
-                <CombatSportsWorkoutManager />
+                <CombatSportsWorkoutManager
+                    onSessionCreated={(session) => {
+                        setSessions((currentSessions) =>
+                            sortSessionsNewestFirst([
+                                session,
+                                ...currentSessions
+                            ])
+                        );
+                        setHistoryError("");
+                    }}
+                />
             </div>
         </div>
     );

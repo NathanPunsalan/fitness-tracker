@@ -7,6 +7,7 @@ import FormField from "../ui/FormField";
 function WorkoutTemplateCard({
     workout,
     busyAction,
+    onStartTraining,
     onEdit,
     onDuplicate,
     onDelete
@@ -87,6 +88,14 @@ function WorkoutTemplateCard({
             </ol>
 
             <div className="workout-card__actions">
+                <Button
+                    type="button"
+                    onClick={() => onStartTraining(workout)}
+                    disabled={busy || activityCount === 0}
+                >
+                    Start Training
+                </Button>
+
                 <Button
                     type="button"
                     variant="secondary"
